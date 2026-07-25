@@ -2,17 +2,13 @@
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Calendar, Plus, Clock, Users, Swords, Trash2, X, AlertTriangle, Check, Ban, Hourglass, User as UserIcon } from 'lucide-react'
-import { formatDateTime, cn } from '@/lib/utils'
+import { Calendar, Plus, Clock, Users, Swords, Trash2, X, AlertTriangle, Check, Ban, Hourglass, User as UserIcon, Pencil, ClipboardList, DollarSign } from 'lucide-react'
+import Link from 'next/link'
+import { formatCurrency, cn, DAYS_OF_WEEK, DAY_LABELS } from '@/lib/utils'
+import { DISCIPLINE_CATEGORIES, DISCIPLINE_SHORT } from '@/lib/categories'
 import toast from 'react-hot-toast'
 
-// Restricted to the brand palette (yellow / red / neutral shades) so class colors stay on-theme
 const COLORS = ['#ffc700', '#e0161c', '#ffda47', '#8f0e12', '#71717a', '#ffffff']
-const CATEGORIES = ['BOXING', 'MUAY_THAI', 'BJJ', 'WRESTLING', 'MMA', 'KICKBOXING', 'CONDITIONING', 'SPARRING']
-const CATEGORY_LABELS: Record<string, string> = {
-  BOXING: 'Boxing', MUAY_THAI: 'Muay Thai', BJJ: 'BJJ', WRESTLING: 'Wrestling',
-  MMA: 'MMA', KICKBOXING: 'Kickboxing', CONDITIONING: 'Conditioning', SPARRING: 'Sparring',
-}
 const STATUS_COLORS: Record<string, string> = {
   APPROVED: 'text-primary-400 bg-primary-400/10 border-primary-400/20',
   PENDING:  'text-yellow-400 bg-yellow-400/10 border-yellow-400/20',
@@ -20,6 +16,11 @@ const STATUS_COLORS: Record<string, string> = {
 }
 
 interface Coach { id: string; firstName: string; lastName: string; specialties?: string | null }
+
+const BLANK_FORM = {
+  name: '', description: '', category: 'MMA_ADULTS', type: 'GROUP', daysOfWeek: [] as string[],
+  startTimeOfDay: '18:00', duration: 60, capacity: 20, price: 59, durationDays: 30, color: '#ffc700', coachId: '',
+}
 
 export default function ClassesPage() {
   const { data: session } = useSession()
@@ -31,14 +32,12 @@ export default function ClassesPage() {
   const [coaches, setCoaches] = useState<Coach[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [editTarget, setEditTarget] = useState<any>(null)
   const [deleteTarget, setDeleteTarget] = useState<any>(null)
   const [deleting, setDeleting] = useState(false)
   const [rejectTarget, setRejectTarget] = useState<any>(null)
   const [rejectionNote, setRejectionNote] = useState('')
-  const [form, setForm] = useState({
-    name: '', description: '', category: 'BOXING', type: 'GROUP', duration: 45,
-    capacity: 20, color: '#ffc700', startTime: '', endTime: '', coachId: '',
-  })
+  const [form, setForm] = useState(BLANK_FORM)
 
   function load() {
     setLoading(true)
@@ -50,15 +49,40 @@ export default function ClassesPage() {
 
   useEffect(() => { load(); loadCoaches() }, [])
 
-  async function addClass(e: React.FormEvent) {
+  function openAdd() { setEditTarget(null); setForm(BLANK_FORM); setShowForm(true) }
+
+  function openEdit(cls: any) {
+    setEditTarget(cls)
+    setForm({
+      name: cls.name, description: cls.description || '', category: cls.category || 'MMA_ADULTS',
+      type: cls.type, daysOfWeek: cls.daysOfWeek || [], startTimeOfDay: cls.startTimeOfDay || '18:00',
+      duration: cls.duration, capacity: cls.capacity, price: cls.price, durationDays: cls.durationDays,
+      color: cls.color || '#ffc700', coachId: cls.coachId || '',
+    })
+    setShowForm(true)
+  }
+
+  function toggleDay(day: string) {
+    setForm(f => ({ ...f, daysOfWeek: f.daysOfWeek.includes(day) ? f.daysOfWeek.filter(d => d !== day) : [...f.daysOfWeek, day] }))
+  }
+
+  async function saveClass(e: React.FormEvent) {
     e.preventDefault()
-    const res = await fetch('/api/classes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
-    if (res.ok) {
-      toast.success(isCoach ? 'Submitted — waiting on admin approval' : 'Class added!')
-      setShowForm(false)
-      setForm({ name:'',description:'',category:'BOXING',type:'GROUP',duration:45,capacity:20,color:'#ffc700',startTime:'',endTime:'',coachId:'' })
-      load()
-    } else { const d = await res.json().catch(()=>({})); toast.error(d.error || 'Failed to add class') }
+    if (form.daysOfWeek.length === 0) { toast.error('Pick at least one day of the week'); return }
+    if (editTarget) {
+      const res = await fetch(`/api/classes?id=${editTarget.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok) {
+        toast.success(data.revertedToPending ? 'Saved — sent back for admin re-approval since it was already live' : 'Class updated')
+        setShowForm(false); load()
+      } else toast.error(data.error || 'Failed to save changes')
+    } else {
+      const res = await fetch('/api/classes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
+      if (res.ok) {
+        toast.success(isCoach ? 'Submitted — waiting on admin approval' : 'Class added!')
+        setShowForm(false); load()
+      } else { const d = await res.json().catch(()=>({})); toast.error(d.error || 'Failed to add class') }
+    }
   }
 
   async function deleteClass() {
@@ -66,11 +90,12 @@ export default function ClassesPage() {
     setDeleting(true)
     const res = await fetch(`/api/classes?id=${deleteTarget.id}`, { method: 'DELETE' })
     setDeleting(false)
-    if (res.ok) { toast.success(`"${deleteTarget.name}" deleted`); setDeleteTarget(null); load() }
+    if (res.ok) { toast.success(`"${deleteTarget.name}" deleted`); setDeleteTarget(null); setShowForm(false); load() }
     else toast.error('Failed to delete class')
   }
 
-  async function approveClass(id: string) {
+  async function approveClass(id: string, e?: React.MouseEvent) {
+    e?.stopPropagation()
     const res = await fetch(`/api/classes?id=${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _action: 'approve' }) })
     if (res.ok) { toast.success('Class approved — now live'); load() } else toast.error('Failed to approve')
   }
@@ -87,17 +112,18 @@ export default function ClassesPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <h1 className="font-display text-4xl tracking-wider text-white">CLASSES & SESSIONS</h1>
+          <h1 className="font-display text-4xl tracking-wider text-white">CLASSES</h1>
           <p className="text-dark-300 text-sm mt-1">
-            {isCoach ? 'Your group classes and private sessions' : `${classes.length} scheduled`}
+            {isCoach ? 'Your classes and private sessions' : `${classes.length} classes`}
             {isAdmin && pendingCount > 0 && <span className="text-yellow-400"> · {pendingCount} awaiting approval</span>}
+            <span className="text-dark-500"> · click a class to edit</span>
           </p>
         </div>
-        <button onClick={() => setShowForm(true)} className="btn-primary"><Plus size={16}/> {isCoach ? 'Submit Class' : 'Add Class'}</button>
+        <button onClick={openAdd} className="btn-primary"><Plus size={16}/> {isCoach ? 'Submit Class' : 'Add Class'}</button>
       </div>
 
       {loading ? (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">{[...Array(6)].map((_,i) => <div key={i} className="h-48 skeleton rounded-2xl"/>)}</div>
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">{[...Array(6)].map((_,i) => <div key={i} className="h-56 skeleton rounded-2xl"/>)}</div>
       ) : classes.length === 0 ? (
         <div className="card text-center py-16"><Calendar size={48} className="mx-auto text-dark-600 mb-4"/><p className="text-dark-400">No classes yet — add your first one</p></div>
       ) : (
@@ -105,43 +131,59 @@ export default function ClassesPage() {
           {classes.map((cls: any, i: number) => (
             <motion.div key={cls.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
               className="card-hover group relative" style={{ borderLeftColor: cls.color || '#ffc700', borderLeftWidth: 3 }}>
-              {/* Delete button */}
-              <button
-                onClick={() => setDeleteTarget(cls)}
-                className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-crimson-500/10 hover:text-crimson-400 text-dark-600 transition-all"
-              >
-                <Trash2 size={14}/>
-              </button>
-              <div className="flex items-start justify-between mb-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${cls.color}20` }}>
-                  <Swords size={16} style={{ color: cls.color }} />
+              <div onClick={() => openEdit(cls)} className="cursor-pointer">
+                <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                  <span className="p-1.5 rounded-lg text-dark-500"><Pencil size={13}/></span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setDeleteTarget(cls) }}
+                    className="p-1.5 rounded-lg hover:bg-crimson-500/10 hover:text-crimson-400 text-dark-600 transition-all"
+                  >
+                    <Trash2 size={14}/>
+                  </button>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-dark-400 bg-dark-700 px-2 py-1 rounded-full">{CATEGORY_LABELS[cls.category] || cls.category || 'General'}</span>
-                  <span className="text-xs bg-dark-700 px-2 py-1 rounded-full text-dark-300">{cls.type === 'PRIVATE' ? 'Private' : 'Group'}</span>
+                <div className="flex items-start justify-between mb-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: `${cls.color}20` }}>
+                    <Swords size={16} style={{ color: cls.color }} />
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs text-dark-400 bg-dark-700 px-2 py-1 rounded-full">{DISCIPLINE_SHORT[cls.category] || cls.category || 'General'}</span>
+                    <span className="text-xs bg-dark-700 px-2 py-1 rounded-full text-dark-300">{cls.type === 'PRIVATE' ? 'Private' : 'Group'}</span>
+                  </div>
                 </div>
+                <h3 className="font-semibold text-white mb-1">{cls.name}</h3>
+                <p className="text-dark-400 text-xs mb-3 line-clamp-2">{cls.description || 'No description'}</p>
+                {cls.coach && <p className="text-xs text-primary-400/80 mb-2 flex items-center gap-1"><UserIcon size={11}/> Coach {cls.coach.firstName} {cls.coach.lastName}</p>}
+                <div className="flex flex-wrap gap-1 mb-2">
+                  {(cls.daysOfWeek || []).map((d: string) => (
+                    <span key={d} className="text-[10px] px-1.5 py-0.5 rounded bg-dark-700 text-dark-300 font-mono">{DAY_LABELS[d] || d}</span>
+                  ))}
+                </div>
+                <div className="flex items-center gap-3 text-xs text-dark-300 flex-wrap">
+                  <span className="flex items-center gap-1"><Clock size={12}/> {cls.startTimeOfDay} · {cls.duration}min</span>
+                  <span className="flex items-center gap-1"><Users size={12}/> {cls._count?.enrollments ?? 0}/{cls.capacity}</span>
+                  <span className="flex items-center gap-1 text-primary-400"><DollarSign size={12}/> {formatCurrency(cls.price)}/{cls.durationDays}d</span>
+                </div>
+                <div className="mt-3 flex items-center justify-between">
+                  <span className="text-xs text-dark-500">{cls.branchId ? '' : ''}</span>
+                  <span className={cn('badge text-xs', STATUS_COLORS[cls.status] || '')}>{cls.status}</span>
+                </div>
+                {cls.status === 'REJECTED' && cls.rejectionNote && (
+                  <p className="mt-2 text-xs text-crimson-300 bg-crimson-500/5 border border-crimson-500/20 rounded-lg px-2 py-1.5">{cls.rejectionNote}</p>
+                )}
               </div>
-              <h3 className="font-semibold text-white mb-1">{cls.name}</h3>
-              <p className="text-dark-400 text-xs mb-3 line-clamp-2">{cls.description || 'No description'}</p>
-              {cls.coach && <p className="text-xs text-primary-400/80 mb-2 flex items-center gap-1"><UserIcon size={11}/> Coach {cls.coach.firstName} {cls.coach.lastName}</p>}
-              <div className="flex items-center gap-4 text-xs text-dark-300">
-                <span className="flex items-center gap-1"><Clock size={12}/> {cls.duration}min</span>
-                <span className="flex items-center gap-1"><Users size={12}/> {cls.capacity} max</span>
-              </div>
-              <div className="mt-3 flex items-center justify-between">
-                <span className="text-xs text-dark-500">{formatDateTime(cls.startTime)}</span>
-                <span className={cn('badge text-xs', STATUS_COLORS[cls.status] || '')}>{cls.status}</span>
-              </div>
-              {cls.status === 'REJECTED' && cls.rejectionNote && (
-                <p className="mt-2 text-xs text-crimson-300 bg-crimson-500/5 border border-crimson-500/20 rounded-lg px-2 py-1.5">{cls.rejectionNote}</p>
+
+              {cls.status === 'APPROVED' && (
+                <Link href={`/dashboard/classes/${cls.id}/attendance`} onClick={e => e.stopPropagation()}
+                  className="mt-3 w-full flex items-center justify-center gap-1.5 py-2 rounded-lg bg-dark-700 border border-dark-600 text-dark-200 hover:bg-dark-600 hover:border-primary-400/30 text-xs font-semibold transition-colors">
+                  <ClipboardList size={13}/> Manage Attendance
+                </Link>
               )}
-              {/* Admin approval actions */}
               {isAdmin && cls.status === 'PENDING' && (
                 <div className="mt-3 flex gap-2">
-                  <button onClick={() => approveClass(cls.id)} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-primary-400/10 border border-primary-400/20 text-primary-400 hover:bg-primary-400/20 text-xs font-semibold transition-colors">
+                  <button onClick={(e) => approveClass(cls.id, e)} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-primary-400/10 border border-primary-400/20 text-primary-400 hover:bg-primary-400/20 text-xs font-semibold transition-colors">
                     <Check size={13}/> Approve
                   </button>
-                  <button onClick={() => setRejectTarget(cls)} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-crimson-500/10 border border-crimson-500/20 text-crimson-400 hover:bg-crimson-500/20 text-xs font-semibold transition-colors">
+                  <button onClick={(e) => { e.stopPropagation(); setRejectTarget(cls) }} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg bg-crimson-500/10 border border-crimson-500/20 text-crimson-400 hover:bg-crimson-500/20 text-xs font-semibold transition-colors">
                     <Ban size={13}/> Reject
                   </button>
                 </div>
@@ -156,29 +198,35 @@ export default function ClassesPage() {
         </div>
       )}
 
-      {/* Add Class Modal */}
+      {/* Add / Edit Class Modal */}
       <AnimatePresence>
         {showForm && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               className="bg-dark-800 border border-dark-600 rounded-2xl p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="font-display text-2xl tracking-wider text-white">{isCoach ? 'SUBMIT CLASS' : 'ADD CLASS'}</h2>
+                <h2 className="font-display text-2xl tracking-wider text-white">{editTarget ? 'EDIT CLASS' : (isCoach ? 'SUBMIT CLASS' : 'ADD CLASS')}</h2>
                 <button onClick={() => setShowForm(false)} className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white transition-colors"><X size={18}/></button>
               </div>
-              {isCoach && (
+              {isCoach && !editTarget && (
                 <div className="bg-yellow-400/5 border border-yellow-400/20 rounded-xl p-3 text-xs text-yellow-300 mb-4 flex items-start gap-2">
                   <Hourglass size={13} className="flex-shrink-0 mt-0.5"/>
                   <div>Classes and private sessions you submit go live once an admin approves them.</div>
                 </div>
               )}
-              <form onSubmit={addClass} className="space-y-4">
-                <div><label className="label">Class Name</label><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} required className="input" placeholder="e.g. Morning Boxing Fundamentals"/></div>
-                <div><label className="label">Description</label><textarea value={form.description} onChange={e => setForm(f=>({...f,description:e.target.value}))} className="input h-20 resize-none" placeholder="What members can expect..."/></div>
+              {isCoach && editTarget && editTarget.status === 'APPROVED' && (
+                <div className="bg-yellow-400/5 border border-yellow-400/20 rounded-xl p-3 text-xs text-yellow-300 mb-4 flex items-start gap-2">
+                  <Hourglass size={13} className="flex-shrink-0 mt-0.5"/>
+                  <div>This class is already live — saving changes will send it back for admin re-approval.</div>
+                </div>
+              )}
+              <form onSubmit={saveClass} className="space-y-4">
+                <div><label className="label">Class Name</label><input value={form.name} onChange={e => setForm(f=>({...f,name:e.target.value}))} required className="input" placeholder="e.g. Kickboxing Adults"/></div>
+                <div><label className="label">Description</label><textarea value={form.description} onChange={e => setForm(f=>({...f,description:e.target.value}))} className="input h-20 resize-none" placeholder="What fighters can expect..."/></div>
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className="label">Discipline</label>
                     <select value={form.category} onChange={e => setForm(f=>({...f,category:e.target.value}))} className="input">
-                      {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
+                      {DISCIPLINE_CATEGORIES.map(c => <option key={c} value={c}>{DISCIPLINE_SHORT[c]}</option>)}
                     </select>
                   </div>
                   <div><label className="label">Format</label>
@@ -188,10 +236,31 @@ export default function ClassesPage() {
                     </select>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label className="label">Duration (min)</label><input type="number" value={form.duration} onChange={e => setForm(f=>({...f,duration:+e.target.value}))} min={15} max={180} className="input"/></div>
-                  <div><label className="label">Capacity</label><input type="number" value={form.capacity} onChange={e => setForm(f=>({...f,capacity:+e.target.value}))} min={1} className="input"/></div>
+
+                <div>
+                  <label className="label">Days of the Week — this defines the weekly session count</label>
+                  <div className="flex gap-1.5 flex-wrap mt-1">
+                    {DAYS_OF_WEEK.map(d => (
+                      <button key={d} type="button" onClick={() => toggleDay(d)}
+                        className={cn('w-11 h-9 rounded-lg text-xs font-semibold border transition-all',
+                          form.daysOfWeek.includes(d) ? 'bg-primary-400 border-primary-400 text-dark-950' : 'border-dark-600 text-dark-300 hover:border-dark-500')}>
+                        {DAY_LABELS[d]}
+                      </button>
+                    ))}
+                  </div>
+                  {form.daysOfWeek.length > 0 && <p className="text-primary-400 text-xs mt-1.5">{form.daysOfWeek.length} sessions / week</p>}
                 </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="label">Start Time</label><input type="time" value={form.startTimeOfDay} onChange={e => setForm(f=>({...f,startTimeOfDay:e.target.value}))} className="input"/></div>
+                  <div><label className="label">Duration (min)</label><input type="number" value={form.duration} onChange={e => setForm(f=>({...f,duration:+e.target.value}))} min={15} max={180} className="input"/></div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="label">Capacity</label><input type="number" value={form.capacity} onChange={e => setForm(f=>({...f,capacity:+e.target.value}))} min={1} className="input"/></div>
+                  <div><label className="label">Price / cycle</label><input type="number" value={form.price} onChange={e => setForm(f=>({...f,price:+e.target.value}))} min={0} step={0.01} className="input"/></div>
+                </div>
+                <div><label className="label">Billing cycle length (days)</label><input type="number" value={form.durationDays} onChange={e => setForm(f=>({...f,durationDays:+e.target.value}))} min={1} className="input"/></div>
+
                 {!isCoach && (
                   <div><label className="label">Coach (optional)</label>
                     <select value={form.coachId} onChange={e => setForm(f=>({...f,coachId:e.target.value}))} className="input">
@@ -209,13 +278,15 @@ export default function ClassesPage() {
                     ))}
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label className="label">Start Time</label><input type="datetime-local" value={form.startTime} onChange={e => setForm(f=>({...f,startTime:e.target.value}))} required className="input"/></div>
-                  <div><label className="label">End Time</label><input type="datetime-local" value={form.endTime} onChange={e => setForm(f=>({...f,endTime:e.target.value}))} required className="input"/></div>
-                </div>
                 <div className="flex gap-3 pt-2">
+                  {editTarget && (
+                    <button type="button" onClick={() => { setShowForm(false); setDeleteTarget(editTarget) }}
+                      className="px-4 py-3 rounded-lg border border-crimson-500/30 text-crimson-400 hover:bg-crimson-500/10 text-sm transition-colors">
+                      <Trash2 size={15}/>
+                    </button>
+                  )}
                   <button type="button" onClick={() => setShowForm(false)} className="btn-ghost flex-1 justify-center">Cancel</button>
-                  <button type="submit" className="btn-primary flex-1 justify-center">{isCoach ? 'Submit for Approval' : 'Add Class'}</button>
+                  <button type="submit" className="btn-primary flex-1 justify-center">{editTarget ? 'Save Changes' : (isCoach ? 'Submit for Approval' : 'Add Class')}</button>
                 </div>
               </form>
             </motion.div>
@@ -252,7 +323,7 @@ export default function ClassesPage() {
               </div>
               <h3 className="font-display text-2xl text-white mb-2">DELETE CLASS</h3>
               <p className="text-white font-semibold mb-1">&quot;{deleteTarget.name}&quot;</p>
-              <p className="text-dark-400 text-sm mb-6">This will remove the class and all bookings. Cannot be undone.</p>
+              <p className="text-dark-400 text-sm mb-6">This removes the class, all enrollments, and attendance history. Cannot be undone.</p>
               <div className="flex gap-3">
                 <button onClick={() => setDeleteTarget(null)} className="btn-ghost flex-1 justify-center">Cancel</button>
                 <button onClick={deleteClass} disabled={deleting}

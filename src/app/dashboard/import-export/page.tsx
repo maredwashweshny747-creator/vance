@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 interface ImportResult { success: boolean; message: string; imported: number; skipped: number; errors: string[] }
 
 const EXPORTS = [
-  { id: 'members',  icon: Users,       label: 'Members',      desc: 'All member profiles, membership types, expiry dates, and contact info' },
+  { id: 'members',  icon: Users,       label: 'Fighters',     desc: 'All fighter profiles, plans, expiry dates, and contact info' },
   { id: 'payments', icon: CreditCard,  label: 'Payments',     desc: 'Complete payment history with member names, amounts, and dates' },
   { id: 'leads',    icon: Target,      label: 'Leads & CRM',  desc: 'All leads with status, source, follow-up dates, and notes' },
 ]
@@ -76,7 +76,7 @@ export default function ImportExportPage() {
       {/* Import section */}
       <div className="space-y-5">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-white text-lg flex items-center gap-2"><Upload size={18} className="text-primary-400"/> Import Members</h2>
+          <h2 className="font-semibold text-white text-lg flex items-center gap-2"><Upload size={18} className="text-primary-400"/> Import Fighters</h2>
           <button onClick={downloadTemplate}
             className="flex items-center gap-2 text-xs text-primary-400 hover:text-primary-300 transition-colors border border-primary-400/20 rounded-lg px-3 py-1.5">
             <FileDown size={13}/> Download Template
@@ -106,7 +106,7 @@ export default function ImportExportPage() {
           <div className="flex flex-wrap gap-2">
             {[
               { col:'firstName', req:true }, { col:'lastName', req:true }, { col:'email', req:true },
-              { col:'phone', req:false }, { col:'membershipPlan', req:false },
+              { col:'phone', req:false }, { col:'class', req:false },
               { col:'startDate', req:false }, { col:'goals', req:false },
               { col:'healthConditions', req:false }, { col:'emergencyContact', req:false },
               { col:'emergencyPhone', req:false }, { col:'notes', req:false },
@@ -116,7 +116,7 @@ export default function ImportExportPage() {
               </span>
             ))}
           </div>
-          <p className="text-dark-600 text-xs mt-2">* Required · membershipPlan: name of an existing plan (e.g. Contender) · startDate: YYYY-MM-DD</p>
+          <p className="text-dark-600 text-xs mt-2">* Required · class: name of an existing class (e.g. Kickboxing Adults) · startDate: YYYY-MM-DD</p>
         </div>
 
         {/* Drop zone */}
@@ -152,7 +152,7 @@ export default function ImportExportPage() {
               <X size={16}/> Clear
             </button>
             <button onClick={runImport} disabled={importing} className="btn-primary flex-1 justify-center">
-              {importing ? <><Loader2 size={16} className="animate-spin"/> Importing…</> : <><Upload size={16}/> Import Members</>}
+              {importing ? <><Loader2 size={16} className="animate-spin"/> Importing…</> : <><Upload size={16}/> Import Fighters</>}
             </button>
           </div>
         )}

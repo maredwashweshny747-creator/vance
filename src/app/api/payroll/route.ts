@@ -2,15 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionAndGym, isAdmin } from '@/lib/getGym'
 
-// Counts sessions a coach has actually taught (approved + already started) in a given month/year.
+// Counts sessions a coach has actually delivered (attended marks logged against their
+// approved classes) in a given month/year — one ATTENDED mark = one session taught.
 async function countSessions(gymId: string, coachId: string, month: number, year: number) {
   const start = new Date(year, month - 1, 1)
   const end   = new Date(year, month, 1)
-  const now   = new Date()
-  return prisma.gymClass.count({
+  return prisma.classAttendance.count({
     where: {
-      gymId, coachId, status: 'APPROVED',
-      startTime: { gte: start, lt: end, lte: now },
+      status: 'ATTENDED',
+      date: { gte: start, lt: end },
+      class: { gymId, coachId, status: 'APPROVED' },
     },
   })
 }

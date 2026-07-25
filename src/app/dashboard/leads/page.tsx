@@ -85,7 +85,7 @@ export default function LeadsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-4xl tracking-wider text-white">LEADS & CRM</h1>
-          <p className="text-dark-300 text-sm mt-1">Track potential members from first contact to conversion</p>
+          <p className="text-dark-300 text-sm mt-1">Track potential fighters from first contact to conversion</p>
         </div>
         <button onClick={()=>setShowForm(true)} className="btn-primary"><Plus size={16}/> Add Lead</button>
       </div>

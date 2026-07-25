@@ -4,14 +4,14 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Minus } from 'lucide-react'
 
 const faqs = [
-  { q: 'How long does setup take?', a: 'Most fight clubs are fully set up within 20–30 minutes. You can import existing members via CSV, configure your membership plans, and go live the same day.' },
-  { q: 'Can I import my existing member data?', a: 'Yes. Vance supports CSV imports for members, payments history, and class schedules. We also offer free migration assistance for Professional and Enterprise plans.' },
+  { q: 'How long does setup take?', a: 'Most fight clubs are fully set up within 20–30 minutes. You can import existing fighters via CSV, configure your membership plans, and go live the same day.' },
+  { q: 'Can I import my existing fighter data?', a: 'Yes. Vance supports CSV imports for fighters, payments history, and class schedules. We also offer free migration assistance for Professional and Enterprise plans.' },
   { q: 'Does Vance handle payment processing?', a: 'Yes, we integrate with Stripe for secure payment processing. You can accept credit/debit cards, set up automatic recurring billing, send invoices, and manage refunds all within Vance.' },
-  { q: 'Can members book classes and private sessions online?', a: 'Absolutely. Each club gets a branded fighter portal where members can view the schedule, book classes or private sessions, manage their membership, and pay invoices.' },
+  { q: 'Can fighters book classes and private sessions online?', a: 'Absolutely. Each club gets a branded fighter portal where fighters can view the schedule, book classes or private sessions, manage their membership, and pay invoices.' },
   { q: 'How does coach pay work?', a: 'Coaches are paid per session taught, not a flat salary. Set each coach\'s rate once, and Vance tracks sessions automatically so payroll is a one-click generate.' },
   { q: 'Is there a contract or commitment?', a: 'No contracts. You can cancel anytime. Annual plans are billed upfront but we offer a pro-rated refund within the first 30 days if you\'re not satisfied.' },
-  { q: 'What happens when I exceed my member limit?', a: 'You\'ll receive a notification to upgrade your plan. We won\'t cut off access abruptly — there\'s a 30-day grace period to review and upgrade.' },
-  { q: 'Do you support multiple club locations?', a: 'Yes. The Enterprise plan supports unlimited locations with centralized management, consolidated reporting, and the ability to share members across locations.' },
+  { q: 'What happens when I exceed my fighter limit?', a: 'You\'ll receive a notification to upgrade your plan. We won\'t cut off access abruptly — there\'s a 30-day grace period to review and upgrade.' },
+  { q: 'Do you support multiple club locations?', a: 'Yes. The Enterprise plan supports unlimited locations with centralized management, consolidated reporting, and the ability to share fighters across locations.' },
   { q: 'Is my data secure?', a: 'Yes. All data is encrypted at rest and in transit. We use SOC 2 compliant infrastructure, daily backups, and are fully GDPR compliant. Your data is never shared or sold.' },
 ]
 

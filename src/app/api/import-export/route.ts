@@ -48,24 +48,29 @@ export async function GET(req: NextRequest) {
   if (type === 'members') {
     const members = await prisma.member.findMany({
       where: { gymId: gym.id },
-      include: { branch: { select: { name: true } }, membershipPlan: { select: { name: true } } },
+      include: { branch: { select: { name: true } }, enrollments: { include: { class: true } } },
       orderBy: { createdAt: 'desc' },
     })
-    const headers = ['id','firstName','lastName','email','phone','membershipPlan','membershipStatus','startDate','endDate','goals','healthConditions','emergencyContact','emergencyPhone','notes','branch','createdAt']
-    const rows = members.map(m => ({
-      id: m.id, firstName: m.firstName, lastName: m.lastName,
-      email: m.email, phone: m.phone || '',
-      membershipPlan: m.membershipPlan?.name || '', membershipStatus: m.membershipStatus,
-      startDate: m.startDate ? new Date(m.startDate).toISOString().split('T')[0] : '',
-      endDate: m.endDate ? new Date(m.endDate).toISOString().split('T')[0] : '',
-      goals: m.goals || '', healthConditions: m.healthConditions || '',
-      emergencyContact: m.emergencyContact || '', emergencyPhone: m.emergencyPhone || '',
-      notes: m.notes || '', branch: (m as any).branch?.name || '',
-      createdAt: new Date(m.createdAt).toISOString().split('T')[0],
-    }))
+    const headers = ['id','firstName','lastName','email','phone','membershipPlans','membershipStatus','goals','healthConditions','emergencyContact','emergencyPhone','notes','branch','createdAt']
+    const rows = members.map(m => {
+      const overallStatus = m.enrollments.some(e => e.status === 'ACTIVE') ? 'ACTIVE'
+        : m.enrollments.some(e => e.status === 'FROZEN') ? 'FROZEN'
+        : m.enrollments.some(e => e.status === 'EXPIRED') ? 'EXPIRED'
+        : m.enrollments.length > 0 ? 'CANCELED' : 'NO_PLAN'
+      return {
+        id: m.id, firstName: m.firstName, lastName: m.lastName,
+        email: m.email, phone: m.phone || '',
+        membershipPlans: m.enrollments.map(e => e.class.name).join('; '),
+        membershipStatus: overallStatus,
+        goals: m.goals || '', healthConditions: m.healthConditions || '',
+        emergencyContact: m.emergencyContact || '', emergencyPhone: m.emergencyPhone || '',
+        notes: m.notes || '', branch: (m as any).branch?.name || '',
+        createdAt: new Date(m.createdAt).toISOString().split('T')[0],
+      }
+    })
     const csv = toCSV(rows, headers)
     return new NextResponse(csv, {
-      headers: { 'Content-Type': 'text/csv', 'Content-Disposition': `attachment; filename="members_${gym.slug}_${new Date().toISOString().split('T')[0]}.csv"` },
+      headers: { 'Content-Type': 'text/csv', 'Content-Disposition': `attachment; filename="fighters_${gym.slug}_${new Date().toISOString().split('T')[0]}.csv"` },
     })
   }
 
@@ -111,7 +116,7 @@ export async function GET(req: NextRequest) {
 
   if (type === 'template') {
     // Return blank import template
-    const csv = 'firstName,lastName,email,phone,membershipPlan,startDate,goals,healthConditions,emergencyContact,emergencyPhone,notes\nJohn,Doe,john@example.com,+1555000001,Contender,2024-01-01,Build muscle,None,Jane Doe,+1555000002,VIP member'
+    const csv = 'firstName,lastName,email,phone,class,startDate,goals,healthConditions,emergencyContact,emergencyPhone,notes\nJohn,Doe,john@example.com,+1555000001,Kickboxing Adults,2024-01-01,Build muscle,None,Jane Doe,+1555000002,VIP fighter'
     return new NextResponse(csv, {
       headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="vance_import_template.csv"' },
     })
@@ -125,8 +130,7 @@ export async function POST(req: NextRequest) {
   const result = await getSessionAndGym()
   if ('error' in result) return result.error
   if (!isAdmin(result.session)) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
-  const { gym } = result
-
+  const { gym, user } = result
   try {
     const formData = await req.formData()
     const file = formData.get('file') as File
@@ -137,8 +141,8 @@ export async function POST(req: NextRequest) {
     if (rows.length === 0) return NextResponse.json({ error: 'CSV is empty or has no data rows' }, { status: 400 })
 
     const results = { imported: 0, skipped: 0, errors: [] as string[] }
-    const plans = await prisma.membershipPlan.findMany({ where: { gymId: gym.id } })
-    const defaultPlan = plans.find(p => p.isActive) || plans[0] || null
+    const classes = await prisma.gymClass.findMany({ where: { gymId: gym.id, status: 'APPROVED' } })
+    const defaultClass = classes.find(c => c.isActive) || classes[0] || null
 
     for (const row of rows) {
       const firstName = row['firstname'] || row['first_name'] || row['first name'] || ''
@@ -155,33 +159,37 @@ export async function POST(req: NextRequest) {
       const existing = await prisma.member.findFirst({ where: { gymId: gym.id, email: email.trim().toLowerCase() } })
       if (existing) { results.skipped++; results.errors.push(`Skipped duplicate email: ${email}`); continue }
 
-      const planName = (row['membershipplan'] || row['membership_plan'] || row['membershipPlan'] || row['plan'] || '').trim().toLowerCase()
-      const matchedPlan = plans.find(p => p.name.toLowerCase() === planName) || defaultPlan
-      if (!matchedPlan) { results.skipped++; results.errors.push(`No membership plans exist yet — create one in Settings first (row: ${email})`); continue }
+      const className = (row['class'] || row['membershipplan'] || row['membership_plan'] || row['plan'] || '').trim().toLowerCase()
+      const matchedClass = classes.find(c => c.name.toLowerCase() === className) || defaultClass
+      if (!matchedClass) { results.skipped++; results.errors.push(`No classes exist yet — create one in Classes first (row: ${email})`); continue }
 
       const startDateRaw = row['startdate'] || row['start_date'] || row['startDate'] || ''
       const startDate    = startDateRaw ? new Date(startDateRaw) : new Date()
       if (isNaN(startDate.getTime())) { results.errors.push(`Invalid start date for ${email}, using today`); }
 
-      const endDate = calcEndDate(isNaN(startDate.getTime()) ? new Date() : startDate, matchedPlan.durationDays)
+      const endDate = calcEndDate(isNaN(startDate.getTime()) ? new Date() : startDate, matchedClass.durationDays)
 
       try {
-        await prisma.member.create({
+        const member = await prisma.member.create({
           data: {
             gymId: gym.id,
             firstName: firstName.trim(),
             lastName:  lastName.trim(),
             email:     email.trim().toLowerCase(),
             phone:     (row['phone'] || row['mobile'] || '').trim() || null,
-            membershipPlanId: matchedPlan.id,
-            membershipStatus: 'ACTIVE',
-            startDate: isNaN(startDate.getTime()) ? new Date() : startDate,
-            endDate,
             goals:            row['goals'] || null,
             healthConditions: row['healthconditions'] || row['health_conditions'] || row['healthConditions'] || null,
             emergencyContact: row['emergencycontact'] || row['emergency_contact'] || row['emergencyContact'] || null,
             emergencyPhone:   row['emergencyphone']   || row['emergency_phone']   || row['emergencyPhone']   || null,
             notes:            row['notes'] || null,
+            createdById: user.id,
+          },
+        })
+        await prisma.classEnrollment.create({
+          data: {
+            memberId: member.id, classId: matchedClass.id, status: 'ACTIVE',
+            startDate: isNaN(startDate.getTime()) ? new Date() : startDate, endDate,
+            addedById: user.id, lastAction: 'CREATED', lastActionById: user.id, lastActionAt: new Date(),
           },
         })
         results.imported++
@@ -193,7 +201,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: `Imported ${results.imported} members. ${results.skipped > 0 ? `${results.skipped} skipped.` : ''}`,
+      message: `Imported ${results.imported} fighters. ${results.skipped > 0 ? `${results.skipped} skipped.` : ''}`,
       ...results,
     })
   } catch (err: any) {

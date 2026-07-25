@@ -103,9 +103,9 @@ export default function AnalyticsPage() {
           sub={`Last month: ${formatCurrency(kpi.revenueLastMonth)}`} />
         <KpiCard label="Total Revenue" value={formatCurrency(kpi.totalRevenue)} icon={TrendingUp} color="primary"
           sub="All time" />
-        <KpiCard label="Active Members" value={kpi.activeMembers} icon={Users} color="blue"
+        <KpiCard label="Active Fighters" value={kpi.activeMembers} icon={Users} color="blue"
           sub={`${kpi.newThisMonth} joined this month`} />
-        <KpiCard label="Total Members" value={kpi.totalMembers} icon={UserCheck} color="blue"
+        <KpiCard label="Total Fighters" value={kpi.totalMembers} icon={UserCheck} color="blue"
           sub={`${kpi.frozenMembers} frozen · ${kpi.expiredMembers} expired`} />
       </div>
 
@@ -115,9 +115,9 @@ export default function AnalyticsPage() {
           sub={`${kpi.convertedLeads} of ${kpi.totalLeads} leads converted`} />
         <KpiCard label="Check-ins This Month" value={kpi.checkInsThisMonth} icon={Activity} color="purple"
           sub={`~${kpi.avgCheckInsPerDay} visits/day avg`} />
-        <KpiCard label="Expired Members" value={kpi.expiredMembers} icon={TrendingDown} color="red"
+        <KpiCard label="Expired Fighters" value={kpi.expiredMembers} icon={TrendingDown} color="red"
           sub="Need renewal follow-up" />
-        <KpiCard label="Frozen Members" value={kpi.frozenMembers} icon={Users} color="blue"
+        <KpiCard label="Frozen Fighters" value={kpi.frozenMembers} icon={Users} color="blue"
           sub="Subscription paused" />
       </div>
 
@@ -145,10 +145,10 @@ export default function AnalyticsPage() {
           </ResponsiveContainer>
         </motion.div>
 
-        {/* Member growth */}
+        {/* Fighter growth */}
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
           className="bg-dark-800 border border-dark-600 rounded-2xl p-6">
-          <h3 className="text-white font-semibold mb-1">Member Growth</h3>
+          <h3 className="text-white font-semibold mb-1">Fighter Growth</h3>
           <p className="text-dark-400 text-xs mb-5">New members per month</p>
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={memberGrowth}>
@@ -156,8 +156,8 @@ export default function AnalyticsPage() {
               <XAxis dataKey="month" tick={{ fill: '#71717a', fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fill: '#71717a', fontSize: 11 }} axisLine={false} tickLine={false} />
               <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="new" name="New Members" fill="#ffc700" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="total" name="Total Members" fill="#27272a" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="new" name="New Fighters" fill="#ffc700" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="total" name="Total Fighters" fill="#27272a" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </motion.div>
@@ -222,14 +222,14 @@ export default function AnalyticsPage() {
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
           className="bg-dark-800 border border-dark-600 rounded-2xl p-6">
           <h3 className="text-white font-semibold mb-1">Membership Plans</h3>
-          <p className="text-dark-400 text-xs mb-5">Member breakdown by plan type</p>
+          <p className="text-dark-400 text-xs mb-5">Fighter breakdown by plan</p>
           <ResponsiveContainer width="100%" height={200}>
             <BarChart data={typeData} layout="vertical">
               <CartesianGrid strokeDasharray="3 3" stroke="#27272a" horizontal={false} />
               <XAxis type="number" tick={{ fill: '#71717a', fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis type="category" dataKey="name" tick={{ fill: '#71717a', fontSize: 11 }} axisLine={false} tickLine={false} width={80} />
               <Tooltip content={<CustomTooltip />} />
-              <Bar dataKey="value" name="Members" fill="#ffc700" radius={[0, 4, 4, 0]} />
+              <Bar dataKey="value" name="Fighters" fill="#ffc700" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </motion.div>
@@ -252,7 +252,7 @@ export default function AnalyticsPage() {
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-white text-sm">{c.name}</span>
-                      <span className="text-dark-400 text-xs">{c.bookings} bookings</span>
+                      <span className="text-dark-400 text-xs">{c.bookings} enrolled</span>
                     </div>
                     <div className="h-1.5 bg-dark-700 rounded-full overflow-hidden">
                       <div className="h-full rounded-full"

@@ -13,8 +13,8 @@ const features = [
   },
   {
     icon: Users,
-    title: 'Member Management',
-    desc: 'Full member profiles, session-based membership plans, renewal tracking, freeze/cancel controls, emergency contacts, health notes, and smart status alerts all in one place.',
+    title: 'Fighter Management',
+    desc: 'Full fighter profiles, session-based membership plans, renewal tracking, freeze/cancel controls, emergency contacts, health notes, and smart status alerts all in one place.',
     color: 'text-primary-400',
     bg: 'bg-primary-400/10 border-primary-400/20',
     tag: 'Core',
@@ -22,7 +22,7 @@ const features = [
   {
     icon: UserCheck,
     title: 'Attendance & Check-in',
-    desc: 'Manual check-in, QR code scanning, and real-time today\'s log. Automatically flags members who haven\'t visited in 30 days so you can win them back before they leave.',
+    desc: 'Manual check-in, QR code scanning, and real-time today\'s log. Automatically flags fighters who haven\'t visited in 30 days so you can win them back before they leave.',
     color: 'text-blue-400',
     bg: 'bg-blue-400/10 border-blue-400/20',
     tag: 'Retention',
@@ -30,7 +30,7 @@ const features = [
   {
     icon: Calendar,
     title: 'Class & Private Session Scheduling',
-    desc: 'Coaches submit group classes and private sessions with categories, capacity, and color coding — nothing goes live until an admin approves it. Members book from the portal.',
+    desc: 'Coaches submit group classes and private sessions with categories, capacity, and color coding — nothing goes live until an admin approves it. Fighters book from the portal.',
     color: 'text-purple-400',
     bg: 'bg-purple-400/10 border-purple-400/20',
     tag: 'Core',
@@ -38,7 +38,7 @@ const features = [
   {
     icon: CreditCard,
     title: 'Payments & Billing',
-    desc: 'Track all payments, memberships, and fees. Stripe integration for card payments. Automatic overdue alerts, payment history per member, and revenue breakdowns.',
+    desc: 'Track all payments, memberships, and fees. Stripe integration for card payments. Automatic overdue alerts, payment history per fighter, and revenue breakdowns.',
     color: 'text-primary-400',
     bg: 'bg-primary-400/10 border-primary-400/20',
     tag: 'Finance',
@@ -62,7 +62,7 @@ const features = [
   {
     icon: Building2,
     title: 'Multi-Branch Management',
-    desc: 'Manage your entire fight club network from one login. Add branches, assign managers, and get a unified overview of members and revenue across all locations.',
+    desc: 'Manage your entire fight club network from one login. Add branches, assign managers, and get a unified overview of fighters and revenue across all locations.',
     color: 'text-cyan-400',
     bg: 'bg-cyan-400/10 border-cyan-400/20',
     tag: 'Enterprise',
@@ -78,7 +78,7 @@ const features = [
   {
     icon: Smartphone,
     title: 'Fighter Portal & Mobile App',
-    desc: 'Every member gets their own portal with QR check-in, class & private session booking, workout plan, and progress tracking (weight, body fat, measurements).',
+    desc: 'Every fighter gets their own portal with QR check-in, class & private session booking, workout plan, and progress tracking (weight, body fat, measurements).',
     color: 'text-primary-400',
     bg: 'bg-primary-400/10 border-primary-400/20',
     tag: 'Retention',
@@ -86,7 +86,7 @@ const features = [
   {
     icon: BarChart3,
     title: 'Analytics & Reports',
-    desc: 'Revenue trends, member growth, class popularity, churn risk scores, and daily stats — all visualized in real time so you always know exactly how your club is performing.',
+    desc: 'Revenue trends, fighter growth, class popularity, churn risk scores, and daily stats — all visualized in real time so you always know exactly how your club is performing.',
     color: 'text-blue-400',
     bg: 'bg-blue-400/10 border-blue-400/20',
     tag: 'Insights',

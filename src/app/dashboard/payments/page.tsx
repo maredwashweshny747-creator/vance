@@ -26,7 +26,7 @@ export default function PaymentsPage() {
       <div className="bg-dark-800 border border-dark-600 rounded-2xl overflow-hidden">
         <table className="w-full">
           <thead className="border-b border-dark-700"><tr>
-            {['Member','Type','Amount','Status','Date'].map(h => <th key={h} className="text-left text-xs text-dark-400 font-medium px-5 py-3">{h}</th>)}
+            {['Fighter','Type','Amount','Status','Date'].map(h => <th key={h} className="text-left text-xs text-dark-400 font-medium px-5 py-3">{h}</th>)}
           </tr></thead>
           <tbody className="divide-y divide-dark-700">
             {loading ? [...Array(5)].map((_,i) => <tr key={i}><td colSpan={5} className="px-5 py-4"><div className="h-5 skeleton rounded"/></td></tr>)

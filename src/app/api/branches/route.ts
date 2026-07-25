@@ -16,8 +16,8 @@ export async function GET(req: NextRequest) {
 
     const [members, activeMembers, expiredMembers, classes] = await Promise.all([
       prisma.member.count({ where: { gymId: gym.id, branchId: id } }),
-      prisma.member.count({ where: { gymId: gym.id, branchId: id, membershipStatus: 'ACTIVE' } }),
-      prisma.member.count({ where: { gymId: gym.id, branchId: id, membershipStatus: 'EXPIRED' } }),
+      prisma.member.count({ where: { gymId: gym.id, branchId: id, enrollments: { some: { status: 'ACTIVE' } } } }),
+      prisma.member.count({ where: { gymId: gym.id, branchId: id, enrollments: { some: { status: 'EXPIRED' } } } }),
       prisma.gymClass.count({ where: { gymId: gym.id, branchId: id } }),
     ])
 
@@ -34,7 +34,7 @@ export async function GET(req: NextRequest) {
 
     const recentMembers = await prisma.member.findMany({
       where: { gymId: gym.id, branchId: id },
-      include: { membershipPlan: { select: { name: true } } },
+      include: { enrollments: { include: { class: true }, orderBy: { createdAt: 'desc' }, take: 1 } },
       orderBy: { createdAt: 'desc' }, take: 5,
     })
 
@@ -65,7 +65,7 @@ export async function GET(req: NextRequest) {
   const branchesWithStats = await Promise.all(branches.map(async b => {
     const [members, activeMembers, classes] = await Promise.all([
       prisma.member.count({ where: { gymId: gym.id, branchId: b.id } }),
-      prisma.member.count({ where: { gymId: gym.id, branchId: b.id, membershipStatus: 'ACTIVE' } }),
+      prisma.member.count({ where: { gymId: gym.id, branchId: b.id, enrollments: { some: { status: 'ACTIVE' } } } }),
       prisma.gymClass.count({ where: { gymId: gym.id, branchId: b.id } }),
     ])
     const rev = await prisma.payment.aggregate({
@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
   }))
 
   // Network totals
-  const totalMembers  = await prisma.member.count({ where: { gymId: gym.id, membershipStatus: 'ACTIVE' } })
+  const totalMembers  = await prisma.member.count({ where: { gymId: gym.id, enrollments: { some: { status: 'ACTIVE' } } } })
   const totalRevenue  = await prisma.payment.aggregate({ where: { gymId: gym.id, status: 'COMPLETED' }, _sum: { amount: true } })
   const unassigned    = await prisma.member.count({ where: { gymId: gym.id, branchId: null } })
 
@@ -100,6 +100,7 @@ export async function POST(req: NextRequest) {
       phone:   body.phone   || null,
       email:   body.email   || null,
       manager: body.manager || null,
+      sports:  Array.isArray(body.sports) ? body.sports : [],
     },
   })
   return NextResponse.json(branch)
@@ -119,6 +120,7 @@ export async function PATCH(req: NextRequest) {
   if (body.phone    !== undefined) upd.phone    = body.phone
   if (body.email    !== undefined) upd.email    = body.email
   if (body.manager  !== undefined) upd.manager  = body.manager
+  if (body.sports   !== undefined) upd.sports   = Array.isArray(body.sports) ? body.sports : []
   if (body.isActive !== undefined) upd.isActive = body.isActive
   await prisma.branch.updateMany({ where: { id, gymId: gym.id }, data: upd })
   return NextResponse.json({ success: true })

@@ -7,10 +7,11 @@ import {
   Calendar, DollarSign, UserCheck
 } from 'lucide-react'
 import { cn, formatCurrency, formatDate, membershipColors, getInitials } from '@/lib/utils'
+import { DISCIPLINE_CATEGORIES, DISCIPLINE_SHORT } from '@/lib/categories'
 import toast from 'react-hot-toast'
 
 interface BranchStats { members:number; activeMembers:number; expiredMembers:number; classes:number; totalRevenue:number }
-interface Branch { id:string; name:string; address?:string; phone?:string; email?:string; manager?:string; isActive:boolean; createdAt:string; stats:BranchStats }
+interface Branch { id:string; name:string; address?:string; phone?:string; email?:string; manager?:string; sports?:string[]; isActive:boolean; createdAt:string; stats:BranchStats }
 interface Network { totalMembers:number; totalRevenue:number; unassigned:number }
 
 export default function BranchesPage() {
@@ -21,7 +22,7 @@ export default function BranchesPage() {
   const [selected, setSelected]  = useState<string | null>(null)  // branch id for detail
   const [detail, setDetail]      = useState<any>(null)
   const [detailLoading, setDetailLoading] = useState(false)
-  const [form, setForm] = useState({ name:'', address:'', phone:'', email:'', manager:'' })
+  const [form, setForm] = useState<{ name:string; address:string; phone:string; email:string; manager:string; sports:string[] }>({ name:'', address:'', phone:'', email:'', manager:'', sports:[] })
 
   function load() {
     setLoading(true)
@@ -44,7 +45,7 @@ export default function BranchesPage() {
   async function addBranch(e:React.FormEvent) {
     e.preventDefault()
     const res = await fetch('/api/branches',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(form)})
-    if(res.ok){ toast.success('Branch added!'); setShowForm(false); setForm({name:'',address:'',phone:'',email:'',manager:''}); load() }
+    if(res.ok){ toast.success('Branch added!'); setShowForm(false); setForm({name:'',address:'',phone:'',email:'',manager:'',sports:[]}); load() }
     else toast.error('Failed')
   }
 
@@ -55,7 +56,7 @@ export default function BranchesPage() {
   }
 
   async function deleteBranch(branch:Branch) {
-    if(!window.confirm(`Delete "${branch.name}"? Members and classes will be unassigned but not deleted.`)) return
+    if(!window.confirm(`Delete "${branch.name}"? Fighters and classes will be unassigned but not deleted.`)) return
     await fetch(`/api/branches?id=${branch.id}`,{method:'DELETE'})
     toast.success('Branch deleted'); setSelected(null); setDetail(null); load()
   }
@@ -82,12 +83,12 @@ export default function BranchesPage() {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
             <div><div className="font-display text-4xl text-white">{branches.length}</div><div className="text-dark-400 text-xs mt-0.5">Total Branches</div></div>
             <div><div className="font-display text-4xl text-primary-400">{activeBranches.length}</div><div className="text-dark-400 text-xs mt-0.5">Active</div></div>
-            <div><div className="font-display text-4xl text-blue-400">{network.totalMembers}</div><div className="text-dark-400 text-xs mt-0.5">Active Members (all gyms)</div></div>
+            <div><div className="font-display text-4xl text-blue-400">{network.totalMembers}</div><div className="text-dark-400 text-xs mt-0.5">Active Fighters (all branches)</div></div>
             <div><div className="font-display text-4xl text-primary-400">{formatCurrency(network.totalRevenue)}</div><div className="text-dark-400 text-xs mt-0.5">Total Revenue (all time)</div></div>
           </div>
           {network.unassigned > 0 && (
             <div className="mt-4 bg-yellow-500/5 border border-yellow-500/20 rounded-xl p-3 text-xs text-yellow-300">
-              ⚠️ {network.unassigned} members are not assigned to any branch. Assign them from the Members page.
+              ⚠️ {network.unassigned} fighters are not assigned to any branch. Assign them from the Fighters page.
             </div>
           )}
         </div>
@@ -122,12 +123,19 @@ export default function BranchesPage() {
               <h3 className="text-white font-semibold text-lg mb-1">{branch.name}</h3>
               {branch.address && <p className="text-dark-400 text-xs mb-3 flex items-start gap-1"><MapPin size={11} className="mt-0.5 flex-shrink-0"/>{branch.address}</p>}
               {branch.manager && <p className="text-dark-400 text-xs mb-3">👤 {branch.manager}</p>}
+              {branch.sports && branch.sports.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-3">
+                  {branch.sports.map(s => (
+                    <span key={s} className="text-xs px-2 py-0.5 rounded-full bg-crimson-400/10 text-crimson-300 border border-crimson-400/20">{DISCIPLINE_SHORT[s] || s}</span>
+                  ))}
+                </div>
+              )}
 
               {/* Stats */}
               <div className="grid grid-cols-2 gap-2 mb-4 pt-3 border-t border-dark-700">
                 <div className="bg-dark-700 rounded-lg p-2 text-center">
                   <div className="font-display text-xl text-primary-400">{branch.stats.activeMembers}</div>
-                  <div className="text-dark-500 text-xs">Active Members</div>
+                  <div className="text-dark-500 text-xs">Active Fighters</div>
                 </div>
                 <div className="bg-dark-700 rounded-lg p-2 text-center">
                   <div className="font-display text-xl text-white">{formatCurrency(branch.stats.totalRevenue)}</div>
@@ -139,7 +147,7 @@ export default function BranchesPage() {
                 </div>
                 <div className="bg-dark-700 rounded-lg p-2 text-center">
                   <div className="font-display text-xl text-purple-400">{branch.stats.members}</div>
-                  <div className="text-dark-500 text-xs">All Members</div>
+                  <div className="text-dark-500 text-xs">All Fighters</div>
                 </div>
               </div>
 
@@ -184,7 +192,7 @@ export default function BranchesPage() {
                     {/* Stats grid */}
                     <div className="grid grid-cols-2 gap-3">
                       {[
-                        {icon:Users,     label:'Active Members', value:detail.stats.activeMembers,     color:'text-primary-400'},
+                        {icon:Users,     label:'Active Fighters', value:detail.stats.activeMembers,     color:'text-primary-400'},
                         {icon:DollarSign,label:'This Month',     value:formatCurrency(detail.stats.revenueThisMonth), color:'text-primary-400'},
                         {icon:Calendar,  label:'Classes',        value:detail.stats.classes,           color:'text-blue-400'},
                         {icon:UserCheck, label:'Expired',        value:detail.stats.expiredMembers,    color:'text-crimson-400'},
@@ -224,7 +232,7 @@ export default function BranchesPage() {
 
                     {/* Membership breakdown */}
                     <div className="bg-dark-800 border border-dark-700 rounded-xl p-4">
-                      <p className="text-dark-400 text-xs mb-3 uppercase tracking-widest font-mono">Member Status</p>
+                      <p className="text-dark-400 text-xs mb-3 uppercase tracking-widest font-mono">Fighter Status</p>
                       <div className="space-y-2">
                         {[
                           {label:'Active',  value:detail.stats.activeMembers,  color:'bg-primary-400'},
@@ -247,23 +255,25 @@ export default function BranchesPage() {
                       </div>
                     </div>
 
-                    {/* Recent members */}
+                    {/* Recent fighters */}
                     {detail.recentMembers?.length > 0 && (
                       <div>
-                        <p className="text-dark-400 text-xs mb-2 uppercase tracking-widest font-mono">Recent Members</p>
+                        <p className="text-dark-400 text-xs mb-2 uppercase tracking-widest font-mono">Recent Fighters</p>
                         <div className="space-y-2">
-                          {detail.recentMembers.map((m:any)=>(
+                          {detail.recentMembers.map((m:any)=>{
+                            const st = m.enrollments?.some((e:any)=>e.status==='ACTIVE') ? 'ACTIVE' : m.enrollments?.some((e:any)=>e.status==='FROZEN') ? 'FROZEN' : m.enrollments?.some((e:any)=>e.status==='EXPIRED') ? 'EXPIRED' : 'NO_PLAN'
+                            return (
                             <div key={m.id} className="flex items-center gap-3 bg-dark-800 rounded-xl p-3">
                               <div className="w-8 h-8 rounded-full bg-dark-700 flex items-center justify-center text-xs font-bold text-primary-400 flex-shrink-0">
                                 {getInitials(`${m.firstName} ${m.lastName}`)}
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="text-white text-sm">{m.firstName} {m.lastName}</div>
-                                <div className="text-dark-500 text-xs">{m.membershipPlan?.name || 'No plan'} · {formatDate(m.startDate)}</div>
+                                <div className="text-dark-500 text-xs">{m.enrollments?.[0]?.class?.name || 'No class'} · {formatDate(m.createdAt)}</div>
                               </div>
-                              <span className={cn('badge text-xs',membershipColors[m.membershipStatus])}>{m.membershipStatus}</span>
+                              <span className={cn('badge text-xs',membershipColors[st])}>{st === 'NO_PLAN' ? 'No Plan' : st}</span>
                             </div>
-                          ))}
+                          )})}
                         </div>
                       </div>
                     )}
@@ -300,8 +310,21 @@ export default function BranchesPage() {
                   <div><label className="label">Email</label><input type="email" value={form.email} onChange={e=>setForm(f=>({...f,email:e.target.value}))} className="input"/></div>
                 </div>
                 <div><label className="label">Branch Manager</label><input value={form.manager} onChange={e=>setForm(f=>({...f,manager:e.target.value}))} className="input" placeholder="Manager name"/></div>
+                <div>
+                  <label className="label">Sports Offered</label>
+                  <div className="grid grid-cols-2 gap-1.5 mt-1 max-h-48 overflow-y-auto pr-1">
+                    {DISCIPLINE_CATEGORIES.filter(c => c !== 'OTHER').map(cat => (
+                      <label key={cat} className={cn('flex items-center gap-2 px-2.5 py-2 rounded-lg border text-xs cursor-pointer transition-colors',
+                        form.sports.includes(cat) ? 'bg-primary-400/10 border-primary-400/30 text-primary-400' : 'border-dark-600 text-dark-300 hover:border-dark-500')}>
+                        <input type="checkbox" checked={form.sports.includes(cat)} className="accent-primary-400"
+                          onChange={e => setForm(f => ({ ...f, sports: e.target.checked ? [...f.sports, cat] : f.sports.filter(s => s !== cat) }))} />
+                        {DISCIPLINE_SHORT[cat]}
+                      </label>
+                    ))}
+                  </div>
+                </div>
                 <div className="bg-primary-400/5 border border-primary-400/20 rounded-xl p-3 text-xs text-primary-400">
-                  After adding a branch, assign members to it from the Members page and classes from the Classes page.
+                  After adding a branch, assign fighters to it from the Fighters page and classes from the Classes page.
                 </div>
                 <div className="flex gap-3 pt-2">
                   <button type="button" onClick={()=>setShowForm(false)} className="btn-ghost flex-1 justify-center">Cancel</button>

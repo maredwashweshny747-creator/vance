@@ -7,6 +7,7 @@ function daysAgo(n: number) { const d = new Date(); d.setDate(d.getDate() - n); 
 function daysFromNow(n: number) { const d = new Date(); d.setDate(d.getDate() + n); return d }
 function rand(min: number, max: number) { return Math.floor(Math.random() * (max - min + 1)) + min }
 function pick<T>(a: T[]): T { return a[Math.floor(Math.random() * a.length)] }
+const DOW = ['SUN','MON','TUE','WED','THU','FRI','SAT']
 
 async function main() {
   console.log('🥊 Seeding Vance...')
@@ -35,22 +36,14 @@ async function main() {
   }
   console.log('✓ Club created:', gym.name)
 
-  // ── Membership Plans (session-based) ───────────────────────────
-  const planDefs = [
-    { name: 'Drop-In',   sessionsPerWeek: 1, price: 15,  durationDays: 7,  description: 'Single-week trial pass' },
-    { name: 'Contender', sessionsPerWeek: 3, price: 59,  durationDays: 30, description: 'Great for building a habit' },
-    { name: 'Fighter',   sessionsPerWeek: 5, price: 99,  durationDays: 30, description: 'For the serious competitor' },
-    { name: 'Champion',  sessionsPerWeek: 0, price: 149, durationDays: 30, description: 'Unlimited sessions, every discipline' },
-  ]
-  const plans: Record<string, any> = {}
-  for (const p of planDefs) {
-    plans[p.name] = await prisma.membershipPlan.upsert({
-      where: { gymId_name: { gymId: gym.id, name: p.name } },
-      update: {},
-      create: { gymId: gym.id, ...p },
-    })
-  }
-  console.log('✓ Membership plans created:', Object.keys(plans).join(', '))
+  // ── Receptionist demo account ───────────────────────────────────
+  const receptionistHash = await bcrypt.hash('demo123456', 12)
+  const receptionist = await prisma.user.upsert({
+    where: { email: 'front-desk@vancefc.app' },
+    update: {},
+    create: { email: 'front-desk@vancefc.app', name: 'Jordan Blake', password: receptionistHash, role: 'RECEPTIONIST', staffGymId: gym.id },
+  })
+  console.log('✓ Receptionist account created')
 
   // ── Coaches (logged-in, paid per session) ──────────────────────
   const coachDefs = [
@@ -75,45 +68,68 @@ async function main() {
   }
   console.log('✓ Coaches created:', coaches.map(c => c.firstName).join(', '))
 
-  // ── Receptionist demo account ───────────────────────────────────
-  const receptionistHash = await bcrypt.hash('demo123456', 12)
-  await prisma.user.upsert({
-    where: { email: 'front-desk@vancefc.app' },
-    update: {},
-    create: { email: 'front-desk@vancefc.app', name: 'Jordan Blake', password: receptionistHash, role: 'RECEPTIONIST', staffGymId: gym.id },
-  })
-  console.log('✓ Receptionist account created')
-
-  // ── Branches ─────────────────────────────────────────────────────
+  // ── Branches (each with the disciplines/sports they offer) ──────
   const branchDefs = [
-    { name: 'Downtown Ring',  address: '456 Main St, New York, NY',    phone: '+1 (555) 234-5678', email: 'downtown@ironcladfc.com', manager: 'Jordan Blake' },
-    { name: 'Eastside Gym',   address: '789 East Ave, Brooklyn, NY',   phone: '+1 (555) 345-6789', email: 'eastside@ironcladfc.com', manager: 'Sarah Mitchell' },
+    { name: 'Downtown Ring',  address: '456 Main St, New York, NY',    phone: '+1 (555) 234-5678', email: 'downtown@ironcladfc.com', manager: 'Jordan Blake',
+      sports: ['MMA_ADULTS','BOXING_ADULTS','KICKBOXING_ADULTS','BJJ_ADULTS','CONDITIONING'] },
+    { name: 'Eastside Gym',   address: '789 East Ave, Brooklyn, NY',   phone: '+1 (555) 345-6789', email: 'eastside@ironcladfc.com', manager: 'Sarah Mitchell',
+      sports: ['KICKBOXING_KIDS','MMA_KIDS','BOXING_KIDS','WRESTLING_ADULTS','SPARRING'] },
   ]
   const branches: any[] = []
   for (const b of branchDefs) {
     const existing = await prisma.branch.findFirst({ where: { gymId: gym.id, name: b.name } })
     branches.push(existing || await prisma.branch.create({ data: { gymId: gym.id, ...b } }))
   }
-  console.log('✓ Branches created')
+  console.log('✓ Branches created (with sports offered)')
 
-  // ── Members ──────────────────────────────────────────────────────
+  // ── Classes (these ARE the subscribable plans — each has a weekly schedule) ──
+  const classDefs = [
+    { name: 'Kickboxing Adults',  category: 'KICKBOXING_ADULTS', type: 'GROUP', daysOfWeek: ['MON','WED','SAT'], startTimeOfDay: '18:00', duration: 60, capacity: 20, price: 59,  durationDays: 30, color: '#ffc700', coach: coaches[1] },
+    { name: 'MMA Adults',         category: 'MMA_ADULTS',        type: 'GROUP', daysOfWeek: ['TUE','THU','SAT'], startTimeOfDay: '19:00', duration: 75, capacity: 16, price: 69,  durationDays: 30, color: '#e0161c', coach: coaches[0] },
+    { name: 'BJJ Adults',         category: 'BJJ_ADULTS',        type: 'GROUP', daysOfWeek: ['MON','WED','FRI'], startTimeOfDay: '19:30', duration: 75, capacity: 16, price: 65,  durationDays: 30, color: '#ffda47', coach: coaches[0] },
+    { name: 'Boxing Adults',      category: 'BOXING_ADULTS',     type: 'GROUP', daysOfWeek: ['MON','TUE','WED','THU','FRI'], startTimeOfDay: '07:00', duration: 60, capacity: 20, price: 99, durationDays: 30, color: '#8f0e12', coach: coaches[2] },
+    { name: 'Kids Kickboxing',    category: 'KICKBOXING_KIDS',   type: 'GROUP', daysOfWeek: ['TUE','THU'],       startTimeOfDay: '16:00', duration: 45, capacity: 14, price: 45,  durationDays: 30, color: '#71717a', coach: coaches[1] },
+    { name: 'Kids MMA Basics',    category: 'MMA_KIDS',          type: 'GROUP', daysOfWeek: ['WED','FRI'],       startTimeOfDay: '16:00', duration: 45, capacity: 14, price: 45,  durationDays: 30, color: '#71717a', coach: coaches[0] },
+    { name: 'Drop-In Boxing',     category: 'BOXING_ADULTS',     type: 'GROUP', daysOfWeek: ['SAT'],             startTimeOfDay: '10:00', duration: 60, capacity: 20, price: 15,  durationDays: 7,  color: '#ffc700', coach: coaches[2] },
+    { name: 'Private Boxing — 1:1',     category: 'BOXING_ADULTS',     type: 'PRIVATE', daysOfWeek: ['TUE','THU'], startTimeOfDay: '10:00', duration: 45, capacity: 1, price: 220, durationDays: 30, color: '#ffc700', coach: coaches[2] },
+    { name: 'Private Muay Thai — 1:1',  category: 'KICKBOXING_ADULTS', type: 'PRIVATE', daysOfWeek: ['MON','WED'], startTimeOfDay: '11:00', duration: 45, capacity: 1, price: 220, durationDays: 30, color: '#e0161c', coach: coaches[1] },
+  ]
+  const classes: Record<string, any> = {}
+  for (const c of classDefs) {
+    const { coach, ...data } = c
+    const existing = await prisma.gymClass.findFirst({ where: { gymId: gym.id, name: c.name } })
+    classes[c.name] = existing || await prisma.gymClass.create({
+      data: { gymId: gym.id, ...data, coachId: coach.id, branchId: pick(branches).id, status: 'APPROVED', createdById: user.id },
+    })
+  }
+  // One coach-submitted class still awaiting admin approval — demonstrates the approval workflow
+  const pendingExisting = await prisma.gymClass.findFirst({ where: { gymId: gym.id, name: 'Late-Night Heavy Bag Session' } })
+  if (!pendingExisting) {
+    await prisma.gymClass.create({
+      data: {
+        gymId: gym.id, name: 'Late-Night Heavy Bag Session', category: 'BOXING_ADULTS', type: 'GROUP',
+        daysOfWeek: ['FRI'], startTimeOfDay: '20:00', duration: 60, capacity: 15, price: 59, durationDays: 30,
+        color: '#ffc700', coachId: coaches[2].id, branchId: branches[0].id,
+        status: 'PENDING', createdById: coaches[2].userId,
+        description: 'Submitted by Dana — awaiting your approval to go live.',
+      },
+    })
+  }
+  console.log('✓ Classes created (including one pending approval)')
+
+  // ── Members (fighters), enrolled directly into classes ───────────
   const existingMemberCount = await prisma.member.count({ where: { gymId: gym.id } })
   if (existingMemberCount === 0) {
     const firstNames = ['James','Maria','Omar','Chloe','Liam','Fatima','Noah','Sofia','Ethan','Layla','Marcus','Zara','Diego','Priya','Kai','Amara','Tyler','Nadia','Jordan','Elena']
     const lastNames = ['Rivera','Chen','Okafor','Nguyen','Silva','Hassan','Brown','Petrov','Kim','Ahmed','Cole','Batista','Reyes','Sharma','Wong','Diallo','Foster','Novak','Lee','Costa']
-    const planWeights = ['Drop-In','Contender','Contender','Contender','Fighter','Fighter','Champion']
+    const singleClassNames = ['Kickboxing Adults','MMA Adults','BJJ Adults','Boxing Adults','Kids Kickboxing','Drop-In Boxing']
+    const addedByPool = [user.id, receptionist.id]
 
     for (let i = 0; i < 42; i++) {
       const first = firstNames[i % firstNames.length]
       const last = lastNames[(i * 3) % lastNames.length]
-      const plan = plans[pick(planWeights)]
-      const start = daysAgo(rand(1, 300))
-      const end = new Date(start); end.setDate(end.getDate() + plan.durationDays)
-      const now = new Date()
-      let status = 'ACTIVE'
-      if (end < now) status = pick(['EXPIRED','EXPIRED','ACTIVE'])
-      if (Math.random() < 0.06) status = 'FROZEN'
-      if (Math.random() < 0.04) status = 'CANCELED'
+      const addedBy = pick(addedByPool)
+      const createdAt = daysAgo(rand(1, 60)) // keep within a cycle or two so session math stays sane
 
       const member = await prisma.member.create({
         data: {
@@ -121,68 +137,63 @@ async function main() {
           firstName: first, lastName: last,
           email: `${first.toLowerCase()}.${last.toLowerCase()}${i}@example.com`,
           phone: `+1555${String(1000000 + i).slice(-7)}`,
-          membershipPlanId: plan.id,
-          membershipStatus: status,
-          startDate: start, endDate: status === 'ACTIVE' || status === 'FROZEN' ? end : end,
           branchId: Math.random() < 0.7 ? pick(branches).id : null,
           goals: pick(['Lose weight and build endurance', 'Compete in amateur bouts', 'Learn self-defense', 'Build strength and confidence', 'Stay in fighting shape']),
-          freezeStartedAt: status === 'FROZEN' ? daysAgo(rand(1,10)) : null,
-          totalFreezeWeeks: status === 'FROZEN' ? rand(5, 20) : 0,
+          createdById: addedBy,
+          createdAt,
         },
       })
 
-      // Check-ins
-      const visits = status === 'ACTIVE' ? rand(4, 24) : rand(0, 8)
-      for (let v = 0; v < visits; v++) {
-        await prisma.checkIn.create({ data: { memberId: member.id, checkedIn: daysAgo(rand(0, 45)), method: Math.random() < 0.4 ? 'QR' : 'MANUAL' } })
+      // Most fighters sign into one class; ~20% train two disciplines at once
+      const classNamesForMember = Math.random() < 0.2
+        ? [pick(['MMA Adults','Boxing Adults']), 'Kickboxing Adults']
+        : [pick(singleClassNames)]
+
+      for (const className of Array.from(new Set(classNamesForMember))) {
+        const cls = classes[className]
+        const start = createdAt
+        const end = new Date(start); end.setDate(end.getDate() + cls.durationDays)
+        const now = new Date()
+        let status = 'ACTIVE'
+        if (end < now) status = pick(['EXPIRED','EXPIRED','ACTIVE'])
+        if (Math.random() < 0.06) status = 'FROZEN'
+        if (Math.random() < 0.04) status = 'CANCELED'
+
+        const enrollment = await prisma.classEnrollment.create({
+          data: {
+            memberId: member.id, classId: cls.id, status,
+            startDate: start, endDate: end,
+            freezeStartedAt: status === 'FROZEN' ? daysAgo(rand(1,10)) : null,
+            totalFreezeDaysLeft: status === 'FROZEN' ? rand(5, 20) : 0,
+            addedById: addedBy, lastAction: 'CREATED', lastActionById: addedBy, lastActionAt: start,
+          },
+        })
+
+        // Attendance marks on the class's actual scheduled days since enrollment
+        if (status === 'ACTIVE' || status === 'EXPIRED') {
+          let cursor = new Date(start)
+          const today = new Date()
+          while (cursor <= today && cursor <= end) {
+            const dayCode = DOW[cursor.getDay()]
+            if (cls.daysOfWeek.includes(dayCode)) {
+              const roll = Math.random()
+              if (roll < 0.75) {
+                await prisma.classAttendance.create({ data: { classId: cls.id, enrollmentId: enrollment.id, memberId: member.id, date: new Date(cursor), status: 'ATTENDED', method: Math.random() < 0.4 ? 'QR' : 'MANUAL', markedById: addedBy } })
+              } else if (roll < 0.85) {
+                await prisma.classAttendance.create({ data: { classId: cls.id, enrollmentId: enrollment.id, memberId: member.id, date: new Date(cursor), status: 'EXCUSED', reason: pick(['Sick', 'Family emergency', 'Traveling for work']), method: 'ROSTER', markedById: addedBy } })
+              }
+              // else: left unmarked (shows as Absent in summaries)
+            }
+            cursor.setDate(cursor.getDate() + 1)
+          }
+        }
+
+        await prisma.payment.create({
+          data: { gymId: gym.id, memberId: member.id, amount: cls.price, currency: 'USD', type: 'MEMBERSHIP', status: 'COMPLETED', method: pick(['CARD','CASH']), description: `New enrollment — ${member.firstName} ${member.lastName} (${cls.name})`, paidAt: start },
+        })
       }
-
-      // Payment for signup
-      await prisma.payment.create({
-        data: { gymId: gym.id, memberId: member.id, amount: plan.price, currency: 'USD', type: 'MEMBERSHIP', status: 'COMPLETED', method: pick(['CARD','CASH']), description: `New membership — ${member.firstName} ${member.lastName} (${plan.name})`, paidAt: start },
-      })
     }
-    console.log('✓ 42 members created')
-  }
-
-  // ── Classes & private sessions ──────────────────────────────────
-  const existingClassCount = await prisma.gymClass.count({ where: { gymId: gym.id } })
-  if (existingClassCount === 0) {
-    const classDefs = [
-      { name: 'Boxing Fundamentals',      category: 'BOXING',       type: 'GROUP',   duration: 60, capacity: 20, color: '#ffc700', coach: coaches[2], daysOut: 1,  hour: 7  },
-      { name: 'Muay Thai Conditioning',   category: 'MUAY_THAI',    type: 'GROUP',   duration: 60, capacity: 18, color: '#e0161c', coach: coaches[1], daysOut: 1,  hour: 18 },
-      { name: 'BJJ Fundamentals',         category: 'BJJ',          type: 'GROUP',   duration: 75, capacity: 16, color: '#ffda47', coach: coaches[0], daysOut: 2,  hour: 19 },
-      { name: 'Advanced Wrestling',       category: 'WRESTLING',    type: 'GROUP',   duration: 60, capacity: 14, color: '#8f0e12', coach: coaches[0], daysOut: 2,  hour: 7  },
-      { name: 'MMA Sparring Night',       category: 'SPARRING',     type: 'GROUP',   duration: 90, capacity: 12, color: '#e0161c', coach: coaches[0], daysOut: 3,  hour: 20 },
-      { name: 'Kickboxing Cardio',        category: 'KICKBOXING',   type: 'GROUP',   duration: 45, capacity: 22, color: '#ffc700', coach: coaches[1], daysOut: 3,  hour: 18 },
-      { name: 'Strength & Conditioning',  category: 'CONDITIONING', type: 'GROUP',   duration: 50, capacity: 20, color: '#71717a', coach: coaches[2], daysOut: 4,  hour: 6  },
-      { name: 'Private Boxing — 1:1',     category: 'BOXING',       type: 'PRIVATE', duration: 45, capacity: 1,  color: '#ffc700', coach: coaches[2], daysOut: 2,  hour: 10 },
-      { name: 'Private Muay Thai — 1:1',  category: 'MUAY_THAI',    type: 'PRIVATE', duration: 45, capacity: 1,  color: '#e0161c', coach: coaches[1], daysOut: 4,  hour: 11 },
-    ]
-    for (const c of classDefs) {
-      const start = daysFromNow(c.daysOut); start.setHours(c.hour, 0, 0, 0)
-      const end = new Date(start); end.setMinutes(end.getMinutes() + c.duration)
-      await prisma.gymClass.create({
-        data: {
-          gymId: gym.id, name: c.name, category: c.category, type: c.type,
-          duration: c.duration, capacity: c.capacity, color: c.color,
-          coachId: c.coach.id, branchId: pick(branches).id,
-          status: 'APPROVED', startTime: start, endTime: end,
-        },
-      })
-    }
-    // One coach-submitted class still awaiting admin approval — demonstrates the approval workflow
-    const pendingStart = daysFromNow(5); pendingStart.setHours(17, 0, 0, 0)
-    const pendingEnd = new Date(pendingStart); pendingEnd.setMinutes(pendingEnd.getMinutes() + 60)
-    await prisma.gymClass.create({
-      data: {
-        gymId: gym.id, name: 'Late-Night Heavy Bag Session', category: 'BOXING', type: 'GROUP',
-        duration: 60, capacity: 15, color: '#ffc700', coachId: coaches[2].id, branchId: branches[0].id,
-        status: 'PENDING', startTime: pendingStart, endTime: pendingEnd,
-        description: 'Submitted by Dana — awaiting your approval to go live.',
-      },
-    })
-    console.log('✓ Classes created (including one pending approval)')
+    console.log('✓ 42 fighters created & enrolled, with attendance history')
   }
 
   // ── Coach payroll (per-session, last 2 months + current) ────────

@@ -113,21 +113,21 @@ export default function DashboardPage() {
 
   const cards = kpi ? [
     {
-      label: 'Total Members',
+      label: 'Total Fighters',
       value: String(kpi.totalMembers ?? 0),
       sub: `${kpi.newThisMonth ?? 0} joined this month`,
       up: true,
       icon: Users,
-      link: '/dashboard/members',
+      link: '/dashboard/fighters',
       color: 'text-primary-400',
     },
     {
-      label: 'Active Members',
+      label: 'Active Fighters',
       value: String(kpi.activeMembers ?? 0),
       sub: `${kpi.frozenMembers ?? 0} frozen · ${kpi.expiredMembers ?? 0} expired`,
       up: true,
       icon: UserCheck,
-      link: '/dashboard/members',
+      link: '/dashboard/fighters',
       color: 'text-blue-400',
     },
     {
@@ -199,7 +199,7 @@ export default function DashboardPage() {
 
           {/* Member status breakdown */}
           <div className="lg:col-span-2 card space-y-4">
-            <h2 className="font-semibold text-white text-sm">Members by Status</h2>
+            <h2 className="font-semibold text-white text-sm">Fighters by Status</h2>
             {statusBreakdown.length === 0 ? (
               <p className="text-dark-500 text-sm">No member data yet</p>
             ) : statusBreakdown.map((s: any) => {
@@ -232,7 +232,7 @@ export default function DashboardPage() {
               {(kpi.expiredMembers ?? 0) > 0 && (
                 <div className="flex items-center gap-2 text-xs text-red-300 bg-red-500/5 border border-red-500/20 rounded-xl px-3 py-2">
                   <AlertCircle size={13} />
-                  {kpi.expiredMembers} expired member{kpi.expiredMembers > 1 ? 's' : ''} — follow up for renewal
+                  {kpi.expiredMembers} expired fighter{kpi.expiredMembers > 1 ? 's' : ''} — follow up for renewal
                 </div>
               )}
               {(kpi.frozenMembers ?? 0) > 0 && (

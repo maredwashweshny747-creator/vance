@@ -6,7 +6,7 @@ import { cn, formatDate } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
 interface PortalData {
-  member: any; gym: { name:string; slug:string }; upcomingClasses: any[]
+  member: any; gym: { name:string; slug:string }; recentAttendance: any[]
 }
 
 export default function MemberPortal() {
@@ -28,12 +28,6 @@ export default function MemberPortal() {
       setData(d); setStep('portal')
     } catch { toast.error('Connection error') }
     setLoading(false)
-  }
-
-  async function bookClass(classId:string) {
-    if(!data) return
-    const res = await fetch('/api/portal', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({_type:'book_class',classId,memberId:data.member.id}) })
-    if(res.ok) { toast.success('Class booked!') } else { const d=await res.json(); toast.error(d.error||'Failed') }
   }
 
   async function addProgress(e:React.FormEvent) {
@@ -80,9 +74,17 @@ export default function MemberPortal() {
   )
 
   if(!data) return null
-  const { member, gym, upcomingClasses } = data
+  const { member, gym, recentAttendance } = data
 
-  const daysLeft = member.endDate ? Math.ceil((new Date(member.endDate).getTime()-Date.now())/(1000*60*60*24)) : null
+  const activeEnrollments = member.enrollments?.filter((e: any) => e.status === 'ACTIVE') || []
+  const overallStatus = activeEnrollments.length > 0 ? 'ACTIVE'
+    : member.enrollments?.some((e: any) => e.status === 'FROZEN') ? 'FROZEN'
+    : member.enrollments?.some((e: any) => e.status === 'EXPIRED') ? 'EXPIRED'
+    : member.enrollments?.length > 0 ? 'CANCELED' : 'NO_PLAN'
+  const soonestExpiry = activeEnrollments
+    .filter((e: any) => e.endDate)
+    .sort((a: any, b: any) => new Date(a.endDate).getTime() - new Date(b.endDate).getTime())[0]
+  const daysLeft = soonestExpiry ? Math.ceil((new Date(soonestExpiry.endDate).getTime()-Date.now())/(1000*60*60*24)) : null
 
   return (
     <div className="min-h-screen bg-dark-950">
@@ -93,7 +95,7 @@ export default function MemberPortal() {
             <div className="w-7 h-7 bg-primary-400 rounded-lg flex items-center justify-center"><Zap size={14} className="text-dark-950" fill="currentColor"/></div>
             <span className="font-display text-lg tracking-wider text-white">{gym.name}</span>
           </div>
-          <span className={cn('badge text-xs', statusColors[member.membershipStatus]||'text-dark-400')}>{member.membershipStatus}</span>
+          <span className={cn('badge text-xs', statusColors[overallStatus]||'text-dark-400')}>{overallStatus === 'NO_PLAN' ? 'No Plan' : overallStatus}</span>
         </div>
       </div>
 
@@ -102,7 +104,7 @@ export default function MemberPortal() {
         <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} className="mb-6">
           <h2 className="font-display text-3xl text-white">HEY, {member.firstName.toUpperCase()} 👋</h2>
           <p className="text-dark-400 text-sm mt-1">
-            {daysLeft !== null ? (daysLeft > 0 ? `Membership expires in ${daysLeft} days` : 'Your membership has expired') : 'Welcome back'}
+            {daysLeft !== null ? (daysLeft > 0 ? `Next renewal in ${daysLeft} days` : 'A plan has expired') : 'Welcome back'}
           </p>
         </motion.div>
 
@@ -128,24 +130,34 @@ export default function MemberPortal() {
         {/* HOME */}
         {tab === 'home' && (
           <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="card"><div className="text-dark-400 text-xs mb-1">Membership</div><div className="text-white font-semibold">{member.membershipPlan?.name || '—'}</div><div className={cn('badge text-xs mt-2', statusColors[member.membershipStatus]||'')}>{member.membershipStatus}</div></div>
-              <div className="card"><div className="text-dark-400 text-xs mb-1">Check-ins</div><div className="font-display text-3xl text-primary-400">{member.checkIns?.length || 0}</div><div className="text-dark-500 text-xs">recent visits</div></div>
+            <div className="space-y-2">
+              {(member.enrollments || []).length === 0 ? (
+                <div className="card"><p className="text-dark-400 text-sm">No classes yet — ask front desk to get you started.</p></div>
+              ) : (member.enrollments || []).map((e: any) => (
+                <div key={e.id} className="card flex items-center justify-between">
+                  <div>
+                    <div className="text-white font-semibold text-sm">{e.class?.name}</div>
+                    <div className="text-dark-500 text-xs">{e.class?.daysOfWeek?.length || 0}x/week{e.endDate ? ` · until ${new Date(e.endDate).toLocaleDateString()}` : ''}</div>
+                  </div>
+                  <span className={cn('badge text-xs', statusColors[e.status]||'')}>{e.status}</span>
+                </div>
+              ))}
             </div>
+            <div className="card"><div className="text-dark-400 text-xs mb-1">Sessions</div><div className="font-display text-3xl text-primary-400">{recentAttendance?.filter((a:any)=>a.status==='ATTENDED').length || 0}</div><div className="text-dark-500 text-xs">recent attended</div></div>
             {daysLeft !== null && daysLeft <= 14 && daysLeft > 0 && (
               <div className="border border-orange-500/20 bg-orange-500/5 rounded-xl p-4">
-                <p className="text-orange-300 text-sm font-semibold">⚠️ Membership expiring in {daysLeft} days</p>
+                <p className="text-orange-300 text-sm font-semibold">⚠️ A plan is expiring in {daysLeft} days</p>
                 <p className="text-dark-400 text-xs mt-1">Contact the gym to renew</p>
               </div>
             )}
-            {member.endDate && <div className="card flex items-center justify-between"><div><div className="text-dark-400 text-xs">Expiry Date</div><div className="text-white text-sm font-semibold">{formatDate(member.endDate)}</div></div><Calendar size={20} className="text-dark-600"/></div>}
             <div className="card">
-              <h3 className="text-white font-semibold mb-3 text-sm">Recent Check-ins</h3>
-              {member.checkIns?.length === 0 ? <p className="text-dark-500 text-sm">No check-ins yet</p>
-              : member.checkIns?.slice(0,5).map((c:any) => (
-                <div key={c.id} className="flex items-center gap-3 py-2 border-b border-dark-700 last:border-0">
-                  <CheckCircle2 size={14} className="text-primary-400 flex-shrink-0"/>
-                  <span className="text-dark-300 text-sm">{new Date(c.checkedIn).toLocaleString()}</span>
+              <h3 className="text-white font-semibold mb-3 text-sm">Recent Attendance</h3>
+              {!recentAttendance || recentAttendance.length === 0 ? <p className="text-dark-500 text-sm">No sessions recorded yet</p>
+              : recentAttendance.slice(0,5).map((a:any) => (
+                <div key={a.id} className="flex items-center gap-3 py-2 border-b border-dark-700 last:border-0">
+                  <CheckCircle2 size={14} className={cn('flex-shrink-0', a.status === 'ATTENDED' ? 'text-primary-400' : a.status === 'EXCUSED' ? 'text-blue-400' : 'text-crimson-400')}/>
+                  <span className="text-dark-300 text-sm flex-1">{a.class?.name}</span>
+                  <span className="text-dark-500 text-xs">{new Date(a.date).toLocaleDateString()}</span>
                 </div>
               ))}
             </div>
@@ -155,19 +167,19 @@ export default function MemberPortal() {
         {/* CLASSES */}
         {tab === 'classes' && (
           <div className="space-y-3">
-            <h3 className="text-white font-semibold">Upcoming Classes</h3>
-            {upcomingClasses.length === 0 ? <div className="card text-center py-10 text-dark-400">No upcoming classes</div>
-            : upcomingClasses.map((cls:any)=>(
-              <div key={cls.id} className="card-hover flex items-center gap-4" style={{borderLeftColor:cls.color||'#ffc700',borderLeftWidth:3}}>
+            <h3 className="text-white font-semibold">Your Class Schedule</h3>
+            {(member.enrollments || []).length === 0 ? <div className="card text-center py-10 text-dark-400">Not signed into any classes yet</div>
+            : member.enrollments.map((e:any)=>(
+              <div key={e.id} className="card-hover flex items-center gap-4" style={{borderLeftColor:e.class?.color||'#ffc700',borderLeftWidth:3}}>
                 <div className="flex-1">
-                  <div className="text-white font-semibold text-sm">{cls.name}</div>
-                  <div className="text-dark-400 text-xs mt-0.5 flex items-center gap-2">
-                    <Clock size={10}/>{new Date(cls.startTime).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}
-                    <span>·</span><span>{cls.duration}min</span>
-                    {cls.coach && <><span>·</span><span>Coach {cls.coach.firstName} {cls.coach.lastName}</span></>}
+                  <div className="text-white font-semibold text-sm">{e.class?.name}</div>
+                  <div className="text-dark-400 text-xs mt-0.5 flex items-center gap-2 flex-wrap">
+                    <Clock size={10}/>{e.class?.startTimeOfDay} · {e.class?.duration}min
+                    <span>·</span><span>{(e.class?.daysOfWeek || []).join('/')}</span>
+                    {e.class?.coach && <><span>·</span><span>Coach {e.class.coach.firstName} {e.class.coach.lastName}</span></>}
                   </div>
                 </div>
-                <button onClick={()=>bookClass(cls.id)} className="flex-shrink-0 px-3 py-1.5 bg-primary-400/10 border border-primary-400/20 text-primary-400 text-xs rounded-lg hover:bg-primary-400/20 transition-colors">Book</button>
+                <span className={cn('badge text-xs flex-shrink-0', statusColors[e.status]||'')}>{e.status}</span>
               </div>
             ))}
           </div>

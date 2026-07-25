@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
       data: {
         gymId:           gym.id,
         name:            body.name,
+        category:        body.category || null,
         sessionsPerWeek: Number(body.sessionsPerWeek) || 0,
         price:           Number(body.price) || 0,
         durationDays:    Number(body.durationDays) || 30,
@@ -52,6 +53,7 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json()
   const upd: any = {}
   if (body.name            !== undefined) upd.name            = body.name
+  if (body.category        !== undefined) upd.category        = body.category || null
   if (body.sessionsPerWeek !== undefined) upd.sessionsPerWeek = Number(body.sessionsPerWeek)
   if (body.price           !== undefined) upd.price           = Number(body.price)
   if (body.durationDays    !== undefined) upd.durationDays    = Number(body.durationDays)
@@ -69,7 +71,7 @@ export async function DELETE(req: NextRequest) {
   const { gym } = result
   const id = new URL(req.url).searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
-  const inUse = await prisma.member.count({ where: { gymId: gym.id, membershipPlanId: id } })
+  const inUse = await prisma.memberPlan.count({ where: { planId: id, status: { in: ['ACTIVE', 'FROZEN'] } } })
   if (inUse > 0) return NextResponse.json({ error: `${inUse} member(s) are currently on this plan. Move them to another plan first.` }, { status: 409 })
   await prisma.membershipPlan.deleteMany({ where: { id, gymId: gym.id } })
   return NextResponse.json({ success: true })

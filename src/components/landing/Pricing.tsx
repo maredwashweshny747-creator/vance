@@ -11,12 +11,12 @@ const plans = [
     price: { monthly: 29, annual: 19 },
     desc: 'Everything a new or small fight club needs to get fully operational from day one.',
     color: 'dark',
-    members: 'Up to 500 members',
+    fighters: 'Up to 500 fighters',
     highlight: null,
     features: [
-      'Up to 500 members',
+      'Up to 500 fighters',
       'Unlimited class & private session scheduling',
-      'Member check-in (manual + QR)',
+      'Fighter check-in (manual + QR)',
       'Online payments & invoicing',
       'Fighter portal & profiles',
       'Email notifications',
@@ -35,10 +35,10 @@ const plans = [
     price: { monthly: 69, annual: 49 },
     desc: 'The complete toolkit for growing fight clubs that want automation and deeper insights.',
     color: 'primary',
-    members: 'Up to 2,000 members',
+    fighters: 'Up to 2,000 fighters',
     highlight: 'BEST VALUE',
     features: [
-      'Up to 2,000 members',
+      'Up to 2,000 fighters',
       'Everything in Starter',
       'SMS + Email automations',
       'Automated payment reminders',
@@ -61,10 +61,10 @@ const plans = [
     price: { monthly: 149, annual: 109 },
     desc: 'For chains, franchises, and serious fight organizations with multiple locations.',
     color: 'dark',
-    members: 'Unlimited members',
+    fighters: 'Unlimited fighters',
     highlight: null,
     features: [
-      'Unlimited members',
+      'Unlimited fighters',
       'Everything in Professional',
       'Multi-location management',
       'White-label branding',
@@ -126,7 +126,7 @@ export function Pricing() {
               </div>
 
               <div className={`text-xs font-bold mb-6 px-3 py-1.5 rounded-lg inline-block w-fit ${plan.popular ? 'bg-dark-950/20 text-dark-900' : 'bg-primary-400/10 text-primary-400'}`}>
-                {plan.members}
+                {plan.fighters}
               </div>
 
               <ul className="space-y-2.5 mb-6 flex-1">

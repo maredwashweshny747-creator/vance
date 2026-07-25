@@ -2,7 +2,7 @@
 import { motion } from 'framer-motion'
 import { Users, TrendingUp, Calendar, DollarSign, Activity, BarChart2, ArrowUpRight, ArrowDownRight, MoreHorizontal } from 'lucide-react'
 
-const members = [
+const fighters = [
   { name: 'Emma Davis', plan: 'Champion', status: 'Active', avatar: 'ED' },
   { name: 'James Wilson', plan: 'Contender', status: 'Active', avatar: 'JW' },
   { name: 'Olivia Brown', plan: 'Fighter', status: 'Frozen', avatar: 'OB' },
@@ -44,7 +44,7 @@ export function DashboardPreview() {
                 <div className="w-7 h-7 bg-primary-400 rounded-lg flex items-center justify-center flex-shrink-0"><Activity size={14} className="text-dark-950" /></div>
                 <span className="font-display text-sm tracking-wider hidden lg:block">VANCE</span>
               </div>
-              {[{ icon: BarChart2, label: 'Dashboard', active: true }, { icon: Users, label: 'Members' }, { icon: Calendar, label: 'Classes' }, { icon: DollarSign, label: 'Payments' }, { icon: TrendingUp, label: 'Analytics' }].map(item => (
+              {[{ icon: BarChart2, label: 'Dashboard', active: true }, { icon: Users, label: 'Fighters' }, { icon: Calendar, label: 'Classes' }, { icon: DollarSign, label: 'Payments' }, { icon: TrendingUp, label: 'Analytics' }].map(item => (
                 <div key={item.label} className={`flex items-center gap-3 px-2 py-2.5 rounded-xl cursor-pointer transition-all ${item.active ? 'bg-primary-400/10 text-primary-400' : 'text-dark-400 hover:text-white hover:bg-dark-800'}`}>
                   <item.icon size={16} className="flex-shrink-0" />
                   <span className="text-xs font-medium hidden lg:block">{item.label}</span>
@@ -58,14 +58,14 @@ export function DashboardPreview() {
                 <div><h3 className="font-semibold text-white text-sm">Good morning, Alex 👋</h3><p className="text-dark-400 text-xs">Here&apos;s what&apos;s happening today</p></div>
                 <div className="flex gap-2">
                   <button className="bg-dark-700 border border-dark-600 text-xs text-white px-3 py-1.5 rounded-lg">This Month</button>
-                  <button className="bg-primary-400 text-dark-950 text-xs font-bold px-3 py-1.5 rounded-lg">+ Add Member</button>
+                  <button className="bg-primary-400 text-dark-950 text-xs font-bold px-3 py-1.5 rounded-lg">+ Add Fighter</button>
                 </div>
               </div>
 
               {/* KPI cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
                 {[
-                  { label: 'Total Members', value: '847', change: '+12', up: true, icon: Users },
+                  { label: 'Total Fighters', value: '847', change: '+12', up: true, icon: Users },
                   { label: 'Monthly Revenue', value: '$18,420', change: '+8.2%', up: true, icon: DollarSign },
                   { label: "Today's Classes", value: '14', change: '3 full', up: true, icon: Calendar },
                   { label: 'Churn Rate', value: '2.1%', change: '-0.4%', up: false, icon: TrendingUp },
@@ -101,14 +101,14 @@ export function DashboardPreview() {
                   </div>
                 </div>
 
-                {/* Recent members */}
+                {/* Recent fighters */}
                 <div className="lg:col-span-2 bg-dark-800 border border-dark-700 rounded-xl p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-sm font-medium text-white">Recent Members</span>
+                    <span className="text-sm font-medium text-white">Recent Fighters</span>
                     <span className="text-xs text-primary-400 cursor-pointer">View all</span>
                   </div>
                   <div className="space-y-2.5">
-                    {members.map(m => (
+                    {fighters.map(m => (
                       <div key={m.name} className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-dark-600 flex items-center justify-center text-xs font-bold text-primary-400 flex-shrink-0">{m.avatar}</div>
                         <div className="flex-1 min-w-0">

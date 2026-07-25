@@ -4,7 +4,7 @@ import { Building2, UserPlus, Settings, TrendingUp } from 'lucide-react'
 
 const steps = [
   { step: '01', icon: Building2, title: 'Create Your Club', desc: 'Sign up and set up your fight club profile in under 5 minutes. Add your location, branding, operating hours, and membership plans.' },
-  { step: '02', icon: UserPlus, title: 'Import Members', desc: 'Bulk import existing members via CSV, or let them sign up through your branded fighter portal. Memberships auto-activate.' },
+  { step: '02', icon: UserPlus, title: 'Import Fighters', desc: 'Bulk import existing fighters via CSV, or let them sign up through your branded fighter portal. Memberships auto-activate.' },
   { step: '03', icon: Settings, title: 'Configure & Schedule', desc: 'Set up your class schedule, bring on coaches, configure per-session pay, and customize notification triggers.' },
   { step: '04', icon: TrendingUp, title: 'Watch Your Club Grow', desc: 'Use real-time analytics to understand your business, reduce churn, fill classes, and make data-driven decisions.' },
 ]

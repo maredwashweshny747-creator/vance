@@ -1,13 +1,15 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { UserCheck, Search, Users, TrendingUp, AlertCircle, Clock, CheckCircle2, Zap, QrCode } from 'lucide-react'
+import { UserCheck, Search, Users, TrendingUp, AlertCircle, Clock, CheckCircle2, Zap, QrCode, X } from 'lucide-react'
 import Link from 'next/link'
 import { getInitials, formatDateTime } from '@/lib/utils'
+import { disciplineLabel } from '@/lib/categories'
 import toast from 'react-hot-toast'
 
-interface Member { id: string; firstName: string; lastName: string; email: string; membershipStatus: string }
-interface CheckIn { id: string; checkedIn: string; method: string; member: Member }
+interface PlanEnrollment { id: string; class: { id: string; name: string; category?: string | null } }
+interface Member { id: string; firstName: string; lastName: string; email: string; enrollments: PlanEnrollment[] }
+interface CheckIn { id: string; checkedIn: string; method: string; member: Member; memberPlan?: { plan: { name: string; category?: string | null } } }
 interface Stats { checkIns: CheckIn[]; todayCount: number; weeklyCheckIns: number; inactiveCount: number }
 
 export default function AttendancePage() {
@@ -16,6 +18,7 @@ export default function AttendancePage() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [checkingIn, setCheckingIn] = useState<string | null>(null)
+  const [planPicker, setPlanPicker] = useState<Member | null>(null)
 
   function loadStats() {
     fetch('/api/attendance?view=today')
@@ -37,17 +40,24 @@ export default function AttendancePage() {
 
   const checkedInIds = new Set(stats?.checkIns.map(c => c.member.id) || [])
 
-  async function checkIn(member: Member) {
-    if (checkedInIds.has(member.id)) { toast('Already checked in today', { icon: '✓' }); return }
-    setCheckingIn(member.id)
+  async function submitCheckIn(memberId: string, memberPlanId?: string) {
+    setCheckingIn(memberId)
     const res = await fetch('/api/attendance', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ memberId: member.id, method: 'MANUAL' }),
+      body: JSON.stringify({ memberId, memberPlanId, method: 'MANUAL' }),
     })
     setCheckingIn(null)
-    if (res.ok) { toast.success(`${member.firstName} checked in!`); loadStats() }
-    else { const d = await res.json(); toast.error(d.error || 'Failed') }
+    const data = await res.json().catch(() => ({}))
+    if (res.ok) { toast.success('Checked in!'); loadStats(); setPlanPicker(null) }
+    else if (data.error === 'MULTIPLE_PLANS') { /* handled by caller opening the picker */ }
+    else toast.error(data.error || 'Failed')
+  }
+
+  async function checkIn(member: Member) {
+    if (checkedInIds.has(member.id)) { toast('Already checked in today', { icon: '✓' }); return }
+    if (member.enrollments.length > 1) { setPlanPicker(member); return }
+    await submitCheckIn(member.id)
   }
 
   return (
@@ -55,7 +65,7 @@ export default function AttendancePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-4xl tracking-wider text-white">ATTENDANCE</h1>
-          <p className="text-dark-300 text-sm mt-1">Manual check-in — click a member to log their visit</p>
+          <p className="text-dark-300 text-sm mt-1">Manual check-in — click a fighter to log their visit</p>
         </div>
         <Link href="/dashboard/attendance/scan"
           className="flex items-center gap-2 bg-primary-400 hover:bg-primary-300 text-dark-950 font-bold px-5 py-2.5 rounded-xl text-sm transition-all active:scale-95">
@@ -69,7 +79,7 @@ export default function AttendancePage() {
         {[
           { icon: UserCheck, label: 'Today', value: loading ? '—' : String(stats?.todayCount ?? 0), color: 'primary' },
           { icon: TrendingUp, label: 'This Week', value: loading ? '—' : String(stats?.weeklyCheckIns ?? 0), color: 'blue' },
-          { icon: Users, label: 'Active Members', value: loading ? '—' : String(members.length), color: 'purple' },
+          { icon: Users, label: 'Active Fighters', value: loading ? '—' : String(members.length), color: 'purple' },
           { icon: AlertCircle, label: 'Inactive 30d', value: loading ? '—' : String(stats?.inactiveCount ?? 0), color: 'orange' },
         ].map(s => {
           const Icon = s.icon
@@ -92,14 +102,14 @@ export default function AttendancePage() {
       <div className="grid lg:grid-cols-2 gap-6">
         {/* Check-in panel */}
         <div className="card space-y-4">
-          <h2 className="font-display text-xl tracking-wider text-white">CHECK IN A MEMBER</h2>
+          <h2 className="font-display text-xl tracking-wider text-white">CHECK IN A FIGHTER</h2>
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400"/>
-            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search member name or email..." className="input pl-9"/>
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search fighter name or email..." className="input pl-9"/>
           </div>
           <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
             {filtered.length === 0 ? (
-              <div className="text-center py-8 text-dark-500 text-sm">No members found</div>
+              <div className="text-center py-8 text-dark-500 text-sm">No fighters found</div>
             ) : filtered.map(m => {
               const alreadyIn = checkedInIds.has(m.id)
               const isLoading = checkingIn === m.id
@@ -120,7 +130,7 @@ export default function AttendancePage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-white text-sm font-medium truncate">{m.firstName} {m.lastName}</div>
-                    <div className="text-dark-400 text-xs truncate">{m.email}</div>
+                    <div className="text-dark-400 text-xs truncate">{m.enrollments.map(p => p.class.name).join(' + ') || m.email}</div>
                   </div>
                   {isLoading ? (
                     <div className="w-5 h-5 border-2 border-primary-400/30 border-t-primary-400 rounded-full animate-spin flex-shrink-0"/>
@@ -151,11 +161,11 @@ export default function AttendancePage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-white text-sm font-medium truncate">{c.member.firstName} {c.member.lastName}</div>
-                  <div className="flex items-center gap-1 text-dark-400 text-xs">
+                  <div className="flex items-center gap-1 text-dark-400 text-xs truncate">
                     <Clock size={10}/>
                     {new Date(c.checkedIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     <span className="ml-1 text-dark-600">·</span>
-                    <span className="text-dark-500">{c.method}</span>
+                    <span className="text-dark-500 truncate">{c.memberPlan?.plan?.name || c.method}</span>
                   </div>
                 </div>
                 <CheckCircle2 size={16} className="text-primary-400 flex-shrink-0"/>
@@ -171,11 +181,40 @@ export default function AttendancePage() {
           className="border border-orange-500/20 bg-orange-500/5 rounded-2xl p-5 flex items-start gap-4">
           <AlertCircle size={20} className="text-orange-400 flex-shrink-0 mt-0.5"/>
           <div>
-            <p className="text-white font-semibold text-sm">{stats.inactiveCount} active member{stats.inactiveCount > 1 ? 's have' : ' has'} not visited in 30+ days</p>
+            <p className="text-white font-semibold text-sm">{stats.inactiveCount} active fighter{stats.inactiveCount > 1 ? 's have' : ' has'} not visited in 30+ days</p>
             <p className="text-dark-400 text-xs mt-1">Consider sending a win-back message to re-engage them before their membership lapses.</p>
           </div>
         </motion.div>
       )}
+
+      {/* Plan picker — shown when a fighter trains more than one discipline */}
+      <AnimatePresence>
+        {planPicker && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setPlanPicker(null)}>
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()} className="bg-dark-800 border border-dark-600 rounded-2xl p-6 w-full max-w-sm">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-display text-xl text-white">WHICH SESSION?</h3>
+                <button onClick={() => setPlanPicker(null)} className="p-1.5 rounded-lg hover:bg-dark-700 text-dark-400"><X size={16}/></button>
+              </div>
+              <p className="text-dark-400 text-xs mb-4">{planPicker.firstName} trains more than one discipline — which one is today&apos;s session for?</p>
+              <div className="space-y-2">
+                {planPicker.enrollments.map(p => (
+                  <button key={p.id} onClick={() => submitCheckIn(planPicker.id, p.id)}
+                    disabled={checkingIn === planPicker.id}
+                    className="w-full flex items-center justify-between p-3 rounded-xl border border-dark-600 hover:border-primary-400/40 hover:bg-dark-700 transition-all text-left">
+                    <div>
+                      <div className="text-white text-sm font-medium">{p.class.name}</div>
+                      <div className="text-dark-500 text-xs">{disciplineLabel(p.class.category)}</div>
+                    </div>
+                    <Zap size={14} className="text-dark-500"/>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

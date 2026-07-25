@@ -1,14 +1,21 @@
 'use client'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { QrCode, CheckCircle2, XCircle, UserCheck, ArrowLeft, Wifi, WifiOff } from 'lucide-react'
+import { QrCode, CheckCircle2, XCircle, UserCheck, ArrowLeft, WifiOff, Zap } from 'lucide-react'
 import Link from 'next/link'
 import { getInitials } from '@/lib/utils'
+import { disciplineLabel } from '@/lib/categories'
 
 interface ScanResult {
   ok: boolean
-  member?: { firstName: string; lastName: string; membershipPlan?: { name: string } | null; membershipStatus: string }
+  member?: { firstName: string; lastName: string; enrollments?: { class: { name: string } }[] }
   message: string
+}
+interface PendingChoice {
+  memberId: string
+  firstName: string
+  lastName: string
+  plans: { id: string; plan: { id: string; name: string; category?: string | null } }[]
 }
 
 export default function QRScannerPage() {
@@ -25,6 +32,7 @@ export default function QRScannerPage() {
   const [processing, setProcessing]     = useState(false)
   const [todayCount, setTodayCount]     = useState(0)
   const [recentScans, setRecentScans]   = useState<{ name: string; time: string; ok: boolean }[]>([])
+  const [pendingChoice, setPendingChoice] = useState<PendingChoice | null>(null)
 
   // Load today count
   useEffect(() => {
@@ -102,11 +110,43 @@ export default function QRScannerPage() {
     requestAnimationFrame(scan)
   }, [cameraReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  async function completeCheckIn(memberId: string, memberPlanId?: string) {
+    setProcessing(true)
+    try {
+      const res = await fetch('/api/attendance', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId, memberPlanId, method: 'QR' }),
+      })
+      const data = await res.json()
+
+      if (res.ok) {
+        const mRes = await fetch(`/api/members?id=${memberId}`)
+        const mData = mRes.ok ? await mRes.json() : null
+        setResult({ ok: true, member: mData ? { firstName: mData.firstName, lastName: mData.lastName, enrollments: mData.enrollments } : undefined, message: 'Checked in successfully!' })
+        setTodayCount(c => c + 1)
+        if (mData) {
+          setRecentScans(prev => [{ name: `${mData.firstName} ${mData.lastName}`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), ok: true }, ...prev].slice(0, 8))
+        }
+      } else {
+        setResult({ ok: false, message: data.error || 'Check-in failed' })
+        setRecentScans(prev => [{ name: 'Unknown', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), ok: false }, ...prev].slice(0, 8))
+      }
+      setTimeout(() => setResult(null), 3500)
+    } catch {
+      setResult({ ok: false, message: 'Network error — check connection' })
+      setTimeout(() => setResult(null), 3000)
+    } finally {
+      setProcessing(false)
+      setPendingChoice(null)
+    }
+  }
+
   const processQR = useCallback(async (raw: string) => {
     // Expected format: vance:checkin:{memberId}
     if (!raw.startsWith('vance:checkin:')) return
     const memberId = raw.replace('vance:checkin:', '').trim()
-    if (!memberId || processing) return
+    if (!memberId || processing || pendingChoice) return
 
     setProcessing(true)
     try {
@@ -117,34 +157,28 @@ export default function QRScannerPage() {
       })
       const data = await res.json()
 
-      let scanResult: ScanResult
-      if (res.ok) {
-        // fetch member name
+      if (res.status === 409 && data.error === 'MULTIPLE_PLANS') {
+        // Fighter trains more than one discipline — ask which session this is for ("the plan of the day")
         const mRes = await fetch(`/api/members?id=${memberId}`)
         const mData = mRes.ok ? await mRes.json() : null
-        scanResult = {
-          ok: true,
-          member: mData ? { firstName: mData.firstName, lastName: mData.lastName, membershipPlan: mData.membershipPlan, membershipStatus: mData.membershipStatus } : undefined,
-          message: 'Checked in successfully!',
-        }
-        setTodayCount(c => c + 1)
-        if (mData) {
-          setRecentScans(prev => [{
-            name: `${mData.firstName} ${mData.lastName}`,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            ok: true,
-          }, ...prev].slice(0, 8))
-        }
-      } else {
-        scanResult = { ok: false, message: data.error || 'Check-in failed' }
-        setRecentScans(prev => [{
-          name: 'Unknown',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          ok: false,
-        }, ...prev].slice(0, 8))
+        setProcessing(false)
+        setPendingChoice({ memberId, firstName: mData?.firstName || 'Fighter', lastName: mData?.lastName || '', plans: data.plans || [] })
+        return
       }
 
-      setResult(scanResult)
+      if (res.ok) {
+        const mRes = await fetch(`/api/members?id=${memberId}`)
+        const mData = mRes.ok ? await mRes.json() : null
+        setResult({ ok: true, member: mData ? { firstName: mData.firstName, lastName: mData.lastName, enrollments: mData.enrollments } : undefined, message: 'Checked in successfully!' })
+        setTodayCount(c => c + 1)
+        if (mData) {
+          setRecentScans(prev => [{ name: `${mData.firstName} ${mData.lastName}`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), ok: true }, ...prev].slice(0, 8))
+        }
+      } else {
+        setResult({ ok: false, message: data.error || 'Check-in failed' })
+        setRecentScans(prev => [{ name: 'Unknown', time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), ok: false }, ...prev].slice(0, 8))
+      }
+
       setTimeout(() => setResult(null), 3500)
     } catch {
       setResult({ ok: false, message: 'Network error — check connection' })
@@ -152,7 +186,7 @@ export default function QRScannerPage() {
     } finally {
       setProcessing(false)
     }
-  }, [processing]) // eslint-disable-line
+  }, [processing, pendingChoice]) // eslint-disable-line
 
   return (
     <div className="min-h-screen bg-dark-950 flex flex-col">
@@ -196,7 +230,7 @@ export default function QRScannerPage() {
               <canvas ref={canvasRef} className="hidden" />
 
               {/* Scanning overlay */}
-              {!result && (
+              {!result && !pendingChoice && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="relative w-64 h-64">
                     {/* Corner brackets */}
@@ -215,11 +249,40 @@ export default function QRScannerPage() {
                       transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }}
                     />
                     <div className="absolute inset-0 flex items-center justify-center">
-                      <p className="text-white/60 text-xs text-center mt-32">Point camera at member QR code</p>
+                      <p className="text-white/60 text-xs text-center mt-32">Point camera at fighter QR code</p>
                     </div>
                   </div>
                 </div>
               )}
+
+              {/* Plan-of-the-day picker — fighter trains more than one discipline */}
+              <AnimatePresence>
+                {pendingChoice && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                    className="absolute inset-0 flex items-center justify-center bg-dark-950/90 backdrop-blur-sm p-6">
+                    <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full max-w-sm">
+                      <div className="w-14 h-14 rounded-full bg-primary-400/20 border-2 border-primary-400 flex items-center justify-center font-bold text-primary-400 text-lg mx-auto mb-3">
+                        {getInitials(`${pendingChoice.firstName} ${pendingChoice.lastName}`)}
+                      </div>
+                      <p className="text-white font-display text-2xl tracking-wider text-center mb-1">{pendingChoice.firstName.toUpperCase()}</p>
+                      <p className="text-dark-300 text-sm text-center mb-4">Trains more than one discipline — which session is this?</p>
+                      <div className="space-y-2">
+                        {pendingChoice.plans.map(p => (
+                          <button key={p.id} onClick={() => completeCheckIn(pendingChoice.memberId, p.id)} disabled={processing}
+                            className="w-full flex items-center justify-between p-3 rounded-xl bg-dark-800 border border-dark-600 hover:border-primary-400/50 transition-all text-left">
+                            <div>
+                              <div className="text-white text-sm font-medium">{p.plan.name}</div>
+                              <div className="text-dark-500 text-xs">{disciplineLabel(p.plan.category)}</div>
+                            </div>
+                            <Zap size={14} className="text-primary-400" />
+                          </button>
+                        ))}
+                      </div>
+                      <button onClick={() => setPendingChoice(null)} className="w-full text-center text-dark-500 text-xs mt-4 hover:text-dark-300">Cancel</button>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               {/* Result overlay */}
               <AnimatePresence>
@@ -249,7 +312,7 @@ export default function QRScannerPage() {
                           <p className="text-white font-display text-3xl tracking-wider mb-1">
                             {result.member.firstName.toUpperCase()}
                           </p>
-                          <p className="text-primary-400 text-sm mb-3">{result.member.membershipPlan?.name || 'Member'}</p>
+                          <p className="text-primary-400 text-sm mb-3">{result.member.enrollments?.[0]?.class?.name || 'Fighter'}</p>
                         </>
                       )}
                       <p className={`font-bold text-xl ${result.ok ? 'text-primary-400' : 'text-red-400'}`}>
@@ -277,7 +340,7 @@ export default function QRScannerPage() {
             {recentScans.length === 0 ? (
               <div className="text-center py-12 text-dark-500 text-sm">
                 <QrCode size={32} className="mx-auto mb-2 opacity-30" />
-                No scans yet — point camera at a member QR code
+                No scans yet — point camera at a fighter QR code
               </div>
             ) : recentScans.map((s, i) => (
               <motion.div

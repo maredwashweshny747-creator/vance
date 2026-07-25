@@ -77,7 +77,7 @@ export function Hero() {
           transition={{ duration: 0.6, delay: 0.3 }}
           className="font-body text-dark-200 text-lg md:text-xl max-w-2xl mx-auto mb-10 leading-relaxed"
         >
-          Vance is the all-in-one platform that handles members, coaches, classes, payments, and analytics — so you can focus on building the best fight club in town.
+          Vance is the all-in-one platform that handles fighters, coaches, classes, payments, and analytics — so you can focus on building the best fight club in town.
         </motion.p>
 
         <motion.div

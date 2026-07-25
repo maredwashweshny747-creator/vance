@@ -2,19 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionAndGym, isAdmin } from '@/lib/getGym'
 
-function toDate(val: unknown): Date | null {
-  if (!val || val === '') return null
-  const d = new Date(val as string)
-  return isNaN(d.getTime()) ? null : d
-}
-
 export async function GET() {
   const result = await getSessionAndGym()
   if ('error' in result) return result.error
   const { gym, user } = result
 
-  // Coaches only see their own classes/private sessions (any status).
-  // Admin & receptionist see everything, including classes pending approval.
+  // Coaches only see their own classes (any status). Admin & receptionist see everything.
   let coachFilter: any = {}
   if (user.role === 'COACH') {
     const coach = await prisma.coach.findFirst({ where: { gymId: gym.id, userId: user.id } })
@@ -23,8 +16,8 @@ export async function GET() {
 
   const classes = await prisma.gymClass.findMany({
     where: { gymId: gym.id, ...coachFilter },
-    include: { coach: true },
-    orderBy: { startTime: 'asc' },
+    include: { coach: true, _count: { select: { enrollments: { where: { status: { in: ['ACTIVE', 'FROZEN'] } } } } } },
+    orderBy: { createdAt: 'desc' },
   })
   return NextResponse.json(classes)
 }
@@ -35,10 +28,10 @@ export async function POST(req: NextRequest) {
   const { gym, user } = result
   try {
     const body = await req.json()
-    const startTime = toDate(body.startTime)
-    const endTime   = toDate(body.endTime)
-    if (!startTime) return NextResponse.json({ error: 'Valid start time is required' }, { status: 400 })
-    if (!endTime)   return NextResponse.json({ error: 'Valid end time is required'   }, { status: 400 })
+    if (!body.name) return NextResponse.json({ error: 'Class name is required' }, { status: 400 })
+    if (!Array.isArray(body.daysOfWeek) || body.daysOfWeek.length === 0) {
+      return NextResponse.json({ error: 'Pick at least one day of the week' }, { status: 400 })
+    }
 
     let coachId: string | null = body.coachId || null
     let status = 'APPROVED' // admin/receptionist submissions go live immediately
@@ -57,15 +50,18 @@ export async function POST(req: NextRequest) {
         description: body.description || null,
         category:    body.category    || null,
         type:        body.type === 'PRIVATE' ? 'PRIVATE' : 'GROUP',
+        daysOfWeek:  body.daysOfWeek,
+        startTimeOfDay: body.startTimeOfDay || '18:00',
         duration:    Number(body.duration)  || 60,
         capacity:    Number(body.capacity)  || 20,
+        price:       Number(body.price)     || 0,
+        durationDays: Number(body.durationDays) || 30,
         color:       body.color       || '#ffc700',
         location:    body.location    || null,
         coachId,
         branchId:    body.branchId    || null,
         status,
-        startTime,
-        endTime,
+        createdById: user.id,
       },
       include: { coach: true },
     })
@@ -80,7 +76,7 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const result = await getSessionAndGym()
   if ('error' in result) return result.error
-  const { gym } = result
+  const { gym, user } = result
   const id = new URL(req.url).searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'Class ID required' }, { status: 400 })
   const cls = await prisma.gymClass.findFirst({ where: { id, gymId: gym.id } })
@@ -101,7 +97,31 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: true })
   }
 
-  return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+  // General edit — a coach may only edit their own classes; editing an already-
+  // approved class as a coach sends it back to PENDING so an admin reviews the change.
+  if (user.role === 'COACH') {
+    const coach = await prisma.coach.findFirst({ where: { gymId: gym.id, userId: user.id } })
+    if (!coach || cls.coachId !== coach.id) return NextResponse.json({ error: 'You can only edit your own classes' }, { status: 403 })
+  }
+
+  const updateData: any = {}
+  const editable = ['name','description','category','type','duration','capacity','color','location','coachId','branchId','price','durationDays','startTimeOfDay']
+  for (const f of editable) {
+    if (body[f] !== undefined) {
+      if (f === 'duration' || f === 'capacity' || f === 'durationDays') updateData[f] = Number(body[f])
+      else if (f === 'price') updateData[f] = Number(body[f])
+      else updateData[f] = body[f] || null
+    }
+  }
+  if (body.daysOfWeek !== undefined && Array.isArray(body.daysOfWeek)) updateData.daysOfWeek = body.daysOfWeek
+
+  let revertedToPending = false
+  if (user.role === 'COACH' && cls.status === 'APPROVED') {
+    updateData.status = 'PENDING'
+    revertedToPending = true
+  }
+  const updated = await prisma.gymClass.update({ where: { id }, data: updateData, include: { coach: true } })
+  return NextResponse.json({ success: true, revertedToPending, class: updated })
 }
 
 export async function DELETE(req: NextRequest) {

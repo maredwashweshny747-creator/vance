@@ -19,7 +19,7 @@ const ALL_NAV_GROUPS = [
     items: [
       { href: '/dashboard',            icon: LayoutDashboard, label: 'Dashboard',        roles: ['ADMIN','RECEPTIONIST','COACH'] as Role[] },
       { href: '/dashboard/leads',      icon: Target,          label: 'Leads & CRM',      roles: ['ADMIN','RECEPTIONIST'] as Role[] },
-      { href: '/dashboard/members',    icon: Users,           label: 'Members',          roles: ['ADMIN','RECEPTIONIST'] as Role[] },
+      { href: '/dashboard/fighters',    icon: Users,           label: 'Fighters',         roles: ['ADMIN','RECEPTIONIST'] as Role[] },
       { href: '/dashboard/attendance', icon: UserCheck,       label: 'Attendance',       roles: ['ADMIN','RECEPTIONIST','COACH'] as Role[] },
     ],
   },
