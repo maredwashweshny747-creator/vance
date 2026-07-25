@@ -69,3 +69,4 @@ Coaches are paid per session taught, not a monthly salary. Set a coach's rate on
 4. Make sure DATABASE_URL points to your production PostgreSQL instance
 5. Deploy!
 # vance
+# vance
