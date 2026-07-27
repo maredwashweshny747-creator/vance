@@ -4,7 +4,7 @@ import { useSession } from 'next-auth/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, Plus, X, Trash2, Snowflake, RefreshCw, Ban, Camera,
-  MessageCircle, QrCode, AlertTriangle, ChevronRight,
+  MessageCircle, QrCode, AlertTriangle, ChevronRight, ArrowLeftRight,
   CheckCircle2, XCircle, MinusCircle, User as UserIcon,
 } from 'lucide-react'
 import { cn, formatDate, formatCurrency, membershipColors, getInitials, whatsappLink, DAY_LABELS } from '@/lib/utils'
@@ -22,7 +22,8 @@ interface Enrollment {
   monthSummary?: MonthSummary
 }
 interface Member {
-  id: string; firstName: string; lastName: string; email: string; phone?: string; photo?: string | null
+  id: string; fighterId: string; firstName: string; lastName: string; email?: string; phone?: string; photo?: string | null
+  birthYear?: number | null
   branchId?: string
   goals?: string; notes?: string; healthConditions?: string
   emergencyContact?: string; emergencyPhone?: string
@@ -34,6 +35,7 @@ interface Member {
 }
 
 const STATUS_OPTS = ['ALL', 'ACTIVE', 'FROZEN', 'EXPIRED', 'CANCELED', 'NO_PLAN']
+const PAYMENT_METHODS = ['CASH', 'CARD', 'BANK_TRANSFER']
 
 function resizeImage(file: File, maxSize = 400, quality = 0.85): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -111,16 +113,19 @@ export default function FightersPage() {
   const [showAddClass, setShowAddClass] = useState(false)
   const [renewTarget, setRenewTarget] = useState<Enrollment | null>(null)
   const [renewing, setRenewing] = useState(false)
+  const [switchTarget, setSwitchTarget] = useState<Enrollment | null>(null)
+  const [switchToClassId, setSwitchToClassId] = useState('')
+  const [switching, setSwitching] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Member | null>(null)
   const [qrOpenFor, setQrOpenFor] = useState<string | null>(null)
   const { data: session } = useSession()
 
   const [addForm, setAddForm] = useState({
-    firstName: '', lastName: '', email: '', phone: '', photo: '',
-    classId: '', startDate: new Date().toISOString().split('T')[0],
+    firstName: '', lastName: '', email: '', phone: '', photo: '', birthYear: '',
+    classId: '', startDate: new Date().toISOString().split('T')[0], paymentMethod: '',
     goals: '', notes: '', healthConditions: '', emergencyContact: '', emergencyPhone: '', branchId: '',
   })
-  const [addClassForm, setAddClassForm] = useState({ classId: '', startDate: new Date().toISOString().split('T')[0] })
+  const [addClassForm, setAddClassForm] = useState({ classId: '', startDate: new Date().toISOString().split('T')[0], paymentMethod: '' })
 
   function loadList() {
     setLoading(true)
@@ -152,12 +157,11 @@ export default function FightersPage() {
 
   async function addMember(e: React.FormEvent) {
     e.preventDefault()
-    if (!addForm.classId) { toast.error('Choose a starting class'); return }
     const res = await fetch('/api/members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(addForm) })
     if (res.ok) {
       toast.success('Fighter added!')
       setShowAdd(false)
-      setAddForm(f => ({ ...f, firstName: '', lastName: '', email: '', phone: '', photo: '', goals: '', notes: '', healthConditions: '', emergencyContact: '', emergencyPhone: '', branchId: '' }))
+      setAddForm(f => ({ ...f, firstName: '', lastName: '', email: '', phone: '', photo: '', birthYear: '', paymentMethod: '', goals: '', notes: '', healthConditions: '', emergencyContact: '', emergencyPhone: '', branchId: '' }))
       loadList()
     } else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to add fighter') }
   }
@@ -185,6 +189,16 @@ export default function FightersPage() {
     setRenewing(false)
     if (res.ok) { toast.success(data.message || 'Renewed'); setRenewTarget(null); refreshSelected(); loadList() }
     else toast.error(data.error || 'Failed to renew')
+  }
+
+  async function confirmSwitch() {
+    if (!switchTarget || !switchToClassId) return
+    setSwitching(true)
+    const res = await fetch(`/api/class-enrollments?id=${switchTarget.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _action: 'switch', newClassId: switchToClassId }) })
+    const data = await res.json().catch(() => ({}))
+    setSwitching(false)
+    if (res.ok) { toast.success(data.message || 'Switched'); setSwitchTarget(null); setSwitchToClassId(''); refreshSelected(); loadList() }
+    else toast.error(data.error || 'Failed to switch')
   }
 
   async function removeEnrollment(enrollmentId: string) {
@@ -230,22 +244,23 @@ export default function FightersPage() {
           <table className="w-full">
             <thead className="border-b border-dark-700">
               <tr>
-                {['Fighter', 'Classes', 'Status', 'Sessions/wk', ''].map(h => (
+                {['ID', 'Fighter', 'Classes', 'Status', 'Sessions/wk', ''].map(h => (
                   <th key={h} className="text-left text-xs text-dark-400 font-medium px-5 py-3">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-dark-700">
-              {loading ? [...Array(6)].map((_, i) => <tr key={i}><td colSpan={5}><div className="h-14 skeleton m-3 rounded-lg" /></td></tr>)
-              : members.length === 0 ? <tr><td colSpan={5} className="px-5 py-16 text-center text-dark-400">No fighters found</td></tr>
+              {loading ? [...Array(6)].map((_, i) => <tr key={i}><td colSpan={6}><div className="h-14 skeleton m-3 rounded-lg" /></td></tr>)
+              : members.length === 0 ? <tr><td colSpan={6} className="px-5 py-16 text-center text-dark-400">No fighters found</td></tr>
               : members.map(m => (
                 <tr key={m.id} onClick={() => openMember(m.id)} className="hover:bg-dark-750 cursor-pointer transition-colors group">
+                  <td className="px-5 py-3.5 text-dark-400 text-xs font-mono">{m.fighterId}</td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
                       <Avatar photo={m.photo} name={`${m.firstName} ${m.lastName}`} size={36} />
                       <div>
                         <div className="text-white text-sm font-medium">{m.firstName} {m.lastName}</div>
-                        <div className="text-dark-500 text-xs">{m.email}</div>
+                        <div className="text-dark-500 text-xs">{m.email || m.phone || '—'}</div>
                       </div>
                     </div>
                   </td>
@@ -283,13 +298,22 @@ export default function FightersPage() {
                   <div><label className="label">Last Name</label><input value={addForm.lastName} onChange={e => setAddForm(f => ({ ...f, lastName: e.target.value }))} required className="input" /></div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="label">Email</label><input type="email" value={addForm.email} onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))} required className="input" /></div>
-                  <div><label className="label">Phone (for WhatsApp)</label><input value={addForm.phone} onChange={e => setAddForm(f => ({ ...f, phone: e.target.value }))} className="input" placeholder="+1 555 000 0000" /></div>
+                  <div><label className="label">Email (optional)</label><input type="email" value={addForm.email} onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))} className="input" /></div>
+                  <div><label className="label">Phone (for WhatsApp)</label><input value={addForm.phone} onChange={e => setAddForm(f => ({ ...f, phone: e.target.value }))} className="input" placeholder="+20 100 000 0000" /></div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="label">Starting Class</label>
-                    <select value={addForm.classId} onChange={e => setAddForm(f => ({ ...f, classId: e.target.value }))} required className="input">
-                      <option value="">Select a class...</option>
+                  <div><label className="label">Birth Year</label><input type="number" value={addForm.birthYear} onChange={e => setAddForm(f => ({ ...f, birthYear: e.target.value }))} className="input" placeholder="e.g. 1998" min={1930} max={new Date().getFullYear()} /></div>
+                  <div><label className="label">Branch (optional)</label>
+                    <select value={addForm.branchId} onChange={e => setAddForm(f => ({ ...f, branchId: e.target.value }))} className="input">
+                      <option value="">Unassigned</option>
+                      {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div><label className="label">Starting Class (optional)</label>
+                    <select value={addForm.classId} onChange={e => setAddForm(f => ({ ...f, classId: e.target.value }))} className="input">
+                      <option value="">None yet</option>
                       {classes.map(c => <option key={c.id} value={c.id}>{c.name} — {c.daysOfWeek.length}x/week ({formatCurrency(c.price)})</option>)}
                     </select>
                   </div>
@@ -297,14 +321,16 @@ export default function FightersPage() {
                     <input type="date" value={addForm.startDate} onChange={e => setAddForm(f => ({ ...f, startDate: e.target.value }))} className="input" />
                   </div>
                 </div>
+                {addForm.classId && (
+                  <div><label className="label">Payment Method (optional)</label>
+                    <select value={addForm.paymentMethod} onChange={e => setAddForm(f => ({ ...f, paymentMethod: e.target.value }))} className="input">
+                      <option value="">Not specified</option>
+                      {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m.replace('_',' ')}</option>)}
+                    </select>
+                  </div>
+                )}
                 {classes.length === 0 && <p className="text-xs text-yellow-400/80">No approved classes yet — create one first in Classes.</p>}
                 <p className="text-xs text-dark-500">Training more than one discipline? Add this fighter first, then use &quot;+ Sign into another class&quot; from their profile.</p>
-                <div><label className="label">Branch (optional)</label>
-                  <select value={addForm.branchId} onChange={e => setAddForm(f => ({ ...f, branchId: e.target.value }))} className="input">
-                    <option value="">Unassigned</option>
-                    {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                  </select>
-                </div>
                 <div><label className="label">Goals</label><input value={addForm.goals} onChange={e => setAddForm(f => ({ ...f, goals: e.target.value }))} className="input" placeholder="e.g. Compete in amateur bouts" /></div>
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className="label">Emergency Contact</label><input value={addForm.emergencyContact} onChange={e => setAddForm(f => ({ ...f, emergencyContact: e.target.value }))} className="input" /></div>
@@ -333,7 +359,7 @@ export default function FightersPage() {
                     <Avatar photo={selected.photo} name={`${selected.firstName} ${selected.lastName}`} size={56} />
                     <div>
                       <h2 className="font-display text-2xl text-white tracking-wide">{selected.firstName.toUpperCase()} {selected.lastName.toUpperCase()}</h2>
-                      <p className="text-dark-400 text-xs">{selected.email}</p>
+                      <p className="text-primary-400 text-xs font-mono tracking-widest">ID {selected.fighterId}</p>
                     </div>
                   </div>
                   <button onClick={() => setSelected(null)} className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white"><X size={18}/></button>
@@ -368,7 +394,10 @@ export default function FightersPage() {
                 <div className="card space-y-2">
                   <h3 className="text-white font-semibold text-sm mb-1">Fighter Data</h3>
                   {[
+                    ['Fighter ID (portal login)', selected.fighterId],
+                    ['Email', selected.email || '—'],
                     ['Phone', selected.phone || '—'],
+                    ['Birth Year', selected.birthYear || '—'],
                     ['Branch', branches.find(b => b.id === selected.branchId)?.name || 'Unassigned'],
                     ['Goals', selected.goals || '—'],
                     ['Health Conditions', selected.healthConditions || '—'],
@@ -436,6 +465,9 @@ export default function FightersPage() {
                           )}
                           <button onClick={() => setRenewTarget(e)} className="flex items-center gap-1 px-2 py-1 rounded-md bg-primary-400/10 border border-primary-400/20 text-primary-400 text-xs hover:bg-primary-400/20"><RefreshCw size={11}/> Renew</button>
                           {(e.status === 'ACTIVE' || e.status === 'FROZEN') && (
+                            <button onClick={() => { setSwitchTarget(e); setSwitchToClassId('') }} className="flex items-center gap-1 px-2 py-1 rounded-md bg-blue-400/10 border border-blue-400/20 text-blue-400 text-xs hover:bg-blue-400/20"><ArrowLeftRight size={11}/> Switch</button>
+                          )}
+                          {(e.status === 'ACTIVE' || e.status === 'FROZEN') && (
                             <button onClick={() => enrollmentAction(e.id, 'cancel', 'Canceled')} className="flex items-center gap-1 px-2 py-1 rounded-md bg-crimson-500/10 border border-crimson-500/20 text-crimson-400 text-xs hover:bg-crimson-500/20"><Ban size={11}/> Cancel</button>
                           )}
                           <button onClick={() => removeEnrollment(e.id)} className="flex items-center gap-1 px-2 py-1 rounded-md bg-dark-700 border border-dark-600 text-dark-400 text-xs hover:bg-crimson-500/10 hover:text-crimson-400 ml-auto"><Trash2 size={11}/></button>
@@ -501,6 +533,12 @@ export default function FightersPage() {
                   </select>
                 </div>
                 <div><label className="label">Start Date</label><input type="date" value={addClassForm.startDate} onChange={e => setAddClassForm(f => ({ ...f, startDate: e.target.value }))} className="input" /></div>
+                <div><label className="label">Payment Method (optional)</label>
+                  <select value={addClassForm.paymentMethod} onChange={e => setAddClassForm(f => ({ ...f, paymentMethod: e.target.value }))} className="input">
+                    <option value="">Not specified</option>
+                    {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m.replace('_',' ')}</option>)}
+                  </select>
+                </div>
                 <div className="flex gap-3 pt-2">
                   <button type="button" onClick={() => setShowAddClass(false)} className="btn-ghost flex-1 justify-center">Cancel</button>
                   <button type="submit" className="btn-primary flex-1 justify-center">Sign Up</button>
@@ -531,6 +569,39 @@ export default function FightersPage() {
                 <button onClick={() => setRenewTarget(null)} className="btn-ghost flex-1 justify-center">Cancel</button>
                 <button onClick={confirmRenew} disabled={renewing} className="btn-primary flex-1 justify-center disabled:opacity-50">
                   {renewing ? 'Renewing…' : 'Confirm Renewal'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Switch Class Modal ────────────────────────────────────── */}
+      <AnimatePresence>
+        {switchTarget && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-dark-800 border border-blue-400/30 rounded-2xl p-8 w-full max-w-sm">
+              <div className="w-12 h-12 rounded-full bg-blue-400/10 border border-blue-400/30 flex items-center justify-center mb-4">
+                <ArrowLeftRight size={20} className="text-blue-400"/>
+              </div>
+              <h3 className="font-display text-2xl text-white mb-2">SWITCH CLASS</h3>
+              <p className="text-dark-300 text-sm mb-4">Move {selected?.firstName} from <span className="text-white font-semibold">{switchTarget.class.name}</span> to a different class.</p>
+              <div className="mb-4">
+                <label className="label">New Class</label>
+                <select value={switchToClassId} onChange={e => setSwitchToClassId(e.target.value)} className="input">
+                  <option value="">Select a class...</option>
+                  {classes.filter(c => c.id !== switchTarget.classId).map(c => <option key={c.id} value={c.id}>{c.name} — {c.daysOfWeek.length}x/week</option>)}
+                </select>
+              </div>
+              <div className="bg-dark-700 rounded-xl p-3 text-xs text-dark-300 mb-6 flex items-center gap-2">
+                <UserIcon size={13} className="text-blue-400 flex-shrink-0"/>
+                No new charge — remaining days on the current cycle carry over to the new class. Recorded as confirmed by <span className="text-white font-semibold">{currentUserName}</span>.
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => { setSwitchTarget(null); setSwitchToClassId('') }} className="btn-ghost flex-1 justify-center">Cancel</button>
+                <button onClick={confirmSwitch} disabled={switching || !switchToClassId} className="flex-1 justify-center bg-blue-500 hover:bg-blue-400 text-white font-bold py-3 px-6 rounded-lg transition-colors disabled:opacity-50 text-sm">
+                  {switching ? 'Switching…' : 'Confirm Switch'}
                 </button>
               </div>
             </motion.div>

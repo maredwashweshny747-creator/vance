@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Zap, Mail, Building2, ArrowRight, UserCheck, Calendar, TrendingUp, Dumbbell, QrCode, CheckCircle2, Clock, Target, Plus, Weight } from 'lucide-react'
+import { Swords, Hash, Building2, ArrowRight, UserCheck, Calendar, TrendingUp, Dumbbell, QrCode, CheckCircle2, Clock, Target, Plus, Weight } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
@@ -11,7 +11,7 @@ interface PortalData {
 
 export default function MemberPortal() {
   const [step, setStep] = useState<'login'|'portal'>('login')
-  const [email, setEmail] = useState('')
+  const [fighterId, setFighterId] = useState('')
   const [gymSlug, setGymSlug] = useState('')
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<PortalData | null>(null)
@@ -22,7 +22,7 @@ export default function MemberPortal() {
     e.preventDefault()
     setLoading(true)
     try {
-      const res = await fetch(`/api/portal?email=${encodeURIComponent(email)}&gym=${gymSlug}`)
+      const res = await fetch(`/api/portal?fighterId=${encodeURIComponent(fighterId)}&gym=${gymSlug}`)
       if(!res.ok){ const d=await res.json(); toast.error(d.error||'Not found'); setLoading(false); return }
       const d = await res.json()
       setData(d); setStep('portal')
@@ -50,15 +50,15 @@ export default function MemberPortal() {
       <motion.div initial={{opacity:0,y:30}} animate={{opacity:1,y:0}} className="relative z-10 w-full max-w-sm">
         <div className="text-center mb-8">
           <div className="w-14 h-14 bg-primary-400 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Zap size={28} className="text-dark-950" fill="currentColor"/>
+            <Swords size={28} className="text-dark-950"/>
           </div>
-          <h1 className="font-display text-4xl tracking-wider text-white">MEMBER PORTAL</h1>
-          <p className="text-dark-400 text-sm mt-2">Access your membership, classes & progress</p>
+          <h1 className="font-display text-4xl tracking-wider text-white">FIGHTER PORTAL</h1>
+          <p className="text-dark-400 text-sm mt-2">Access your classes, sessions & progress</p>
         </div>
         <form onSubmit={login} className="card space-y-4">
           <div>
-            <label className="label">Your Email</label>
-            <div className="relative"><Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400"/><input type="email" value={email} onChange={e=>setEmail(e.target.value)} required className="input pl-9" placeholder="you@example.com"/></div>
+            <label className="label">Fighter ID</label>
+            <div className="relative"><Hash size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400"/><input value={fighterId} onChange={e=>setFighterId(e.target.value)} required className="input pl-9 font-mono tracking-widest" placeholder="00002000" maxLength={8}/></div>
           </div>
           <div>
             <label className="label">Gym ID</label>
@@ -68,7 +68,7 @@ export default function MemberPortal() {
             {loading ? 'Finding your account...' : <><span>Access Portal</span><ArrowRight size={16}/></>}
           </button>
         </form>
-        <p className="text-center text-dark-600 text-xs mt-4">Ask your gym staff for the Gym ID</p>
+        <p className="text-center text-dark-600 text-xs mt-4">Your Fighter ID is on your membership card — ask staff if you don&apos;t have it</p>
       </motion.div>
     </div>
   )
@@ -92,7 +92,7 @@ export default function MemberPortal() {
       <div className="bg-dark-900 border-b border-dark-700 sticky top-0 z-40">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-primary-400 rounded-lg flex items-center justify-center"><Zap size={14} className="text-dark-950" fill="currentColor"/></div>
+            <div className="w-7 h-7 bg-primary-400 rounded-lg flex items-center justify-center"><Swords size={14} className="text-dark-950"/></div>
             <span className="font-display text-lg tracking-wider text-white">{gym.name}</span>
           </div>
           <span className={cn('badge text-xs', statusColors[overallStatus]||'text-dark-400')}>{overallStatus === 'NO_PLAN' ? 'No Plan' : overallStatus}</span>
@@ -281,7 +281,7 @@ export default function MemberPortal() {
               </div>
               <div className="bg-dark-700 rounded-xl px-4 py-2 inline-block">
                 <p className="text-primary-400 font-mono text-sm">{member.firstName} {member.lastName}</p>
-                <p className="text-dark-500 text-xs font-mono">{member.id.slice(0,16)}...</p>
+                <p className="text-dark-500 text-xs font-mono">ID: {member.fighterId}</p>
               </div>
             </div>
             <div className="border border-dark-600 rounded-xl p-4 text-sm text-dark-400">

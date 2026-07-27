@@ -65,7 +65,7 @@ model Gym {
   email       String?
   website     String?
   timezone    String   @default("UTC")
-  currency    String   @default("USD")
+  currency    String   @default("EGP")
   plan        String   @default("STARTER") // STARTER, PROFESSIONAL, ENTERPRISE
   planStatus  String   @default("ACTIVE")  // ACTIVE, PAST_DUE, CANCELED
   stripeCustomerId     String?
@@ -94,12 +94,14 @@ model Gym {
 model Member {
   id          String   @id @default(cuid())
   gymId       String
+  fighterId   String   // 8-digit sequential ID (e.g. "00002000") — also the fighter portal login
   firstName   String
   lastName    String
-  email       String
+  email       String?
   phone       String?
   address     String?
   dateOfBirth String?
+  birthYear   Int?
   photo       String?
   emergencyContact String?
   emergencyPhone   String?
@@ -122,6 +124,7 @@ model Member {
   workoutPlans WorkoutPlan[]
 
   @@unique([gymId, email])
+  @@unique([gymId, fighterId])
 }
 
 // ─── Coaches (logged-in users, paid per session) ──────────────────────────
@@ -245,7 +248,7 @@ model Payment {
   gymId       String
   memberId    String?
   amount      Float
-  currency    String   @default("USD")
+  currency    String   @default("EGP")
   type        String   // MEMBERSHIP, CLASS, PERSONAL_TRAINING, PRODUCT
   status      String   @default("PENDING") // PENDING, COMPLETED, FAILED, REFUNDED
   method      String?  // CARD, CASH, BANK_TRANSFER

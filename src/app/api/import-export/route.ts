@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionAndGym, isAdmin } from '@/lib/getGym'
+import { generateFighterId } from '@/lib/enrollment'
 
 function calcEndDate(start: Date, durationDays: number): Date {
   const d = new Date(start)
@@ -170,9 +171,11 @@ export async function POST(req: NextRequest) {
       const endDate = calcEndDate(isNaN(startDate.getTime()) ? new Date() : startDate, matchedClass.durationDays)
 
       try {
+        const fighterId = await generateFighterId(gym.id)
         const member = await prisma.member.create({
           data: {
             gymId: gym.id,
+            fighterId,
             firstName: firstName.trim(),
             lastName:  lastName.trim(),
             email:     email.trim().toLowerCase(),

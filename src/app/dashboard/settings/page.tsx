@@ -15,7 +15,7 @@ export default function SettingsPage() {
   const isAdmin = role === 'ADMIN'
 
   const [tab, setTab] = useState<'gym'|'team'>('gym')
-  const [gymData, setGymData] = useState<GymSettings>({ name:'', address:'', phone:'', email:'', currency:'USD', timezone:'UTC' })
+  const [gymData, setGymData] = useState<GymSettings>({ name:'', address:'', phone:'', email:'', currency:'EGP', timezone:'UTC' })
   const [team, setTeam] = useState<TeamAccount[]>([])
   const [saving, setSaving] = useState(false)
   const [showAddTeam, setShowAddTeam] = useState(false)
@@ -24,7 +24,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetch('/api/settings').then(r => r.json()).then(d => {
-      if (d && !d.error) setGymData({ name: d.name||'', address: d.address||'', phone: d.phone||'', email: d.email||'', currency: d.currency||'USD', timezone: d.timezone||'UTC' })
+      if (d && !d.error) setGymData({ name: d.name||'', address: d.address||'', phone: d.phone||'', email: d.email||'', currency: d.currency||'EGP', timezone: d.timezone||'UTC' })
     }).catch(() => {})
     if (isAdmin) {
       fetch('/api/staff-accounts').then(r => r.json()).then(d => { if (Array.isArray(d)) setTeam(d) }).catch(() => {})
@@ -98,8 +98,8 @@ export default function SettingsPage() {
             <div><label className="label">Email</label><input type="email" value={gymData.email} onChange={e=>setGymData(d=>({...d,email:e.target.value}))} className="input" placeholder="club@example.com"/></div>
             <div><label className="label">Currency</label>
               <select value={gymData.currency} onChange={e=>setGymData(d=>({...d,currency:e.target.value}))} className="input">
-                <option value="USD">USD ($)</option><option value="EUR">EUR (€)</option>
-                <option value="GBP">GBP (£)</option><option value="EGP">EGP (E£)</option>
+                <option value="EGP">EGP (E£)</option><option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option><option value="GBP">GBP (£)</option>
                 <option value="AED">AED (د.إ)</option><option value="SAR">SAR (﷼)</option>
               </select>
             </div>

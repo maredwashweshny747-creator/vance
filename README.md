@@ -50,16 +50,26 @@ All demo accounts use the password `demo123456`.
 ## Roles
 
 - **Admin** — full access to every tab, including Payroll, Branches, Analytics, Settings, and approving/rejecting coach-submitted classes.
-- **Receptionist** — Members, Leads, Classes, Attendance, Payments, Store & Inventory.
-- **Coach** — logs in to submit group classes and private sessions (held as `PENDING` until an admin approves them), marks attendance, and sees their own schedule + estimated per-session earnings on their dashboard.
+- **Receptionist** — Fighters, Leads, Classes, Attendance, Payments, Store & Inventory.
+- **Coach** — logs in to submit group classes and private sessions (held as `PENDING` until an admin approves them), manages attendance rosters for their own classes, and sees their own schedule + estimated per-session earnings on their dashboard.
 
-## Membership Plans
+## Classes Are the Plan
 
-Members are assigned a `MembershipPlan` (e.g. "Contender — 3 sessions/week") instead of a flat Daily/Monthly/Quarterly/Annual type. Manage plans under **Settings → Membership Plans**. Each plan has a name, a weekly session quota (`0` = unlimited), a price, and a billing cycle length in days.
+There's no separate "membership plan" concept — a `GymClass` (e.g. "Kickboxing Adults") *is* what a fighter subscribes to: it has a weekly schedule (which days it meets), a price, and a billing cycle length in days. Fighters sign into a class directly from their profile, and can be signed into more than one at once (e.g. MMA + Kickboxing). A fighter can switch from one class to another mid-cycle — remaining days carry over, no new charge.
+
+A subscription (`ClassEnrollment`) automatically expires when either condition is met, whichever comes first: the fighter has used up all sessions allotted for the cycle, or the cycle's day count has passed.
+
+## Attendance
+
+Attendance is taken per class, per date — open a class's **Manage Attendance** page, pick a date, and mark each signed-in fighter Attended / Absent / Excused. This also powers each fighter's month-to-date summary on their profile. QR/manual check-in at the front desk writes to the same records.
+
+## Fighter IDs & the Portal
+
+Every fighter gets an auto-generated 8-digit Fighter ID (starting at `00002000`), shown on their profile and usable in place of an email address — email is optional. This ID is also how a fighter logs into the self-service portal at `/portal` (along with your gym's slug), so no email is required to use it.
 
 ## Coach Payroll
 
-Coaches are paid per session taught, not a monthly salary. Set a coach's rate once when creating their account (**Settings → Team Access**), and **Payroll → Coach Payroll** auto-tallies their approved, already-taught sessions each month — generate the entry, then mark it paid.
+Coaches are paid per session taught, not a monthly salary. Set a coach's rate once when creating their account (**Settings → Team Access**), and **Payroll → Coach Payroll** auto-tallies sessions actually attended in their classes each month — generate the entry, then mark it paid.
 
 ## Deploy to Production (Vercel)
 

@@ -28,9 +28,9 @@ async function main() {
       data: {
         name: 'Ironclad Fight Club', slug: 'ironclad-fc',
         ownerId: user.id,
-        address: '123 Fight St, New York, NY 10001',
-        phone: '+1 (555) 123-4567', email: 'contact@ironcladfc.com',
-        currency: 'USD', timezone: 'America/New_York', plan: 'PROFESSIONAL',
+        address: '15 Al Haram St, Giza, Egypt',
+        phone: '+20 100 123 4567', email: 'contact@ironcladfc.com',
+        currency: 'EGP', timezone: 'Africa/Cairo', plan: 'PROFESSIONAL',
       },
     })
   }
@@ -47,9 +47,9 @@ async function main() {
 
   // ── Coaches (logged-in, paid per session) ──────────────────────
   const coachDefs = [
-    { firstName: 'Sarah', lastName: 'Mitchell', email: 'sarah@vancefc.app', specialties: 'BJJ, Wrestling, MMA',      sessionRate: 32 },
-    { firstName: 'Mike',  lastName: 'Torres',   email: 'mike@vancefc.app',  specialties: 'Muay Thai, Kickboxing',    sessionRate: 28 },
-    { firstName: 'Dana',  lastName: 'Lee',      email: 'dana@vancefc.app',  specialties: 'Boxing, Conditioning',     sessionRate: 30 },
+    { firstName: 'Sarah', lastName: 'Mitchell', email: 'sarah@vancefc.app', specialties: 'BJJ, Wrestling, MMA',      sessionRate: 450 },
+    { firstName: 'Mike',  lastName: 'Torres',   email: 'mike@vancefc.app',  specialties: 'Muay Thai, Kickboxing',    sessionRate: 400 },
+    { firstName: 'Dana',  lastName: 'Lee',      email: 'dana@vancefc.app',  specialties: 'Boxing, Conditioning',     sessionRate: 420 },
   ]
   const coaches: any[] = []
   for (const c of coachDefs) {
@@ -84,15 +84,15 @@ async function main() {
 
   // ── Classes (these ARE the subscribable plans — each has a weekly schedule) ──
   const classDefs = [
-    { name: 'Kickboxing Adults',  category: 'KICKBOXING_ADULTS', type: 'GROUP', daysOfWeek: ['MON','WED','SAT'], startTimeOfDay: '18:00', duration: 60, capacity: 20, price: 59,  durationDays: 30, color: '#ffc700', coach: coaches[1] },
-    { name: 'MMA Adults',         category: 'MMA_ADULTS',        type: 'GROUP', daysOfWeek: ['TUE','THU','SAT'], startTimeOfDay: '19:00', duration: 75, capacity: 16, price: 69,  durationDays: 30, color: '#e0161c', coach: coaches[0] },
-    { name: 'BJJ Adults',         category: 'BJJ_ADULTS',        type: 'GROUP', daysOfWeek: ['MON','WED','FRI'], startTimeOfDay: '19:30', duration: 75, capacity: 16, price: 65,  durationDays: 30, color: '#ffda47', coach: coaches[0] },
-    { name: 'Boxing Adults',      category: 'BOXING_ADULTS',     type: 'GROUP', daysOfWeek: ['MON','TUE','WED','THU','FRI'], startTimeOfDay: '07:00', duration: 60, capacity: 20, price: 99, durationDays: 30, color: '#8f0e12', coach: coaches[2] },
-    { name: 'Kids Kickboxing',    category: 'KICKBOXING_KIDS',   type: 'GROUP', daysOfWeek: ['TUE','THU'],       startTimeOfDay: '16:00', duration: 45, capacity: 14, price: 45,  durationDays: 30, color: '#71717a', coach: coaches[1] },
-    { name: 'Kids MMA Basics',    category: 'MMA_KIDS',          type: 'GROUP', daysOfWeek: ['WED','FRI'],       startTimeOfDay: '16:00', duration: 45, capacity: 14, price: 45,  durationDays: 30, color: '#71717a', coach: coaches[0] },
-    { name: 'Drop-In Boxing',     category: 'BOXING_ADULTS',     type: 'GROUP', daysOfWeek: ['SAT'],             startTimeOfDay: '10:00', duration: 60, capacity: 20, price: 15,  durationDays: 7,  color: '#ffc700', coach: coaches[2] },
-    { name: 'Private Boxing — 1:1',     category: 'BOXING_ADULTS',     type: 'PRIVATE', daysOfWeek: ['TUE','THU'], startTimeOfDay: '10:00', duration: 45, capacity: 1, price: 220, durationDays: 30, color: '#ffc700', coach: coaches[2] },
-    { name: 'Private Muay Thai — 1:1',  category: 'KICKBOXING_ADULTS', type: 'PRIVATE', daysOfWeek: ['MON','WED'], startTimeOfDay: '11:00', duration: 45, capacity: 1, price: 220, durationDays: 30, color: '#e0161c', coach: coaches[1] },
+    { name: 'Kickboxing Adults',  category: 'KICKBOXING_ADULTS', type: 'GROUP', daysOfWeek: ['MON','WED','SAT'], startTimeOfDay: '18:00', duration: 60, capacity: 20, price: 1200, durationDays: 30, color: '#ffc700', coach: coaches[1] },
+    { name: 'MMA Adults',         category: 'MMA_ADULTS',        type: 'GROUP', daysOfWeek: ['TUE','THU','SAT'], startTimeOfDay: '19:00', duration: 75, capacity: 16, price: 1400, durationDays: 30, color: '#e0161c', coach: coaches[0] },
+    { name: 'BJJ Adults',         category: 'BJJ_ADULTS',        type: 'GROUP', daysOfWeek: ['MON','WED','FRI'], startTimeOfDay: '19:30', duration: 75, capacity: 16, price: 1300, durationDays: 30, color: '#ffda47', coach: coaches[0] },
+    { name: 'Boxing Adults',      category: 'BOXING_ADULTS',     type: 'GROUP', daysOfWeek: ['MON','TUE','WED','THU','FRI'], startTimeOfDay: '07:00', duration: 60, capacity: 20, price: 1800, durationDays: 30, color: '#8f0e12', coach: coaches[2] },
+    { name: 'Kids Kickboxing',    category: 'KICKBOXING_KIDS',   type: 'GROUP', daysOfWeek: ['TUE','THU'],       startTimeOfDay: '16:00', duration: 45, capacity: 14, price: 900, durationDays: 30, color: '#71717a', coach: coaches[1] },
+    { name: 'Kids MMA Basics',    category: 'MMA_KIDS',          type: 'GROUP', daysOfWeek: ['WED','FRI'],       startTimeOfDay: '16:00', duration: 45, capacity: 14, price: 900, durationDays: 30, color: '#71717a', coach: coaches[0] },
+    { name: 'Drop-In Boxing',     category: 'BOXING_ADULTS',     type: 'GROUP', daysOfWeek: ['SAT'],             startTimeOfDay: '10:00', duration: 60, capacity: 20, price: 300, durationDays: 7,  color: '#ffc700', coach: coaches[2] },
+    { name: 'Private Boxing — 1:1',     category: 'BOXING_ADULTS',     type: 'PRIVATE', daysOfWeek: ['TUE','THU'], startTimeOfDay: '10:00', duration: 45, capacity: 1, price: 3500, durationDays: 30, color: '#ffc700', coach: coaches[2] },
+    { name: 'Private Muay Thai — 1:1',  category: 'KICKBOXING_ADULTS', type: 'PRIVATE', daysOfWeek: ['MON','WED'], startTimeOfDay: '11:00', duration: 45, capacity: 1, price: 3500, durationDays: 30, color: '#e0161c', coach: coaches[1] },
   ]
   const classes: Record<string, any> = {}
   for (const c of classDefs) {
@@ -108,7 +108,7 @@ async function main() {
     await prisma.gymClass.create({
       data: {
         gymId: gym.id, name: 'Late-Night Heavy Bag Session', category: 'BOXING_ADULTS', type: 'GROUP',
-        daysOfWeek: ['FRI'], startTimeOfDay: '20:00', duration: 60, capacity: 15, price: 59, durationDays: 30,
+        daysOfWeek: ['FRI'], startTimeOfDay: '20:00', duration: 60, capacity: 15, price: 1200, durationDays: 30,
         color: '#ffc700', coachId: coaches[2].id, branchId: branches[0].id,
         status: 'PENDING', createdById: coaches[2].userId,
         description: 'Submitted by Dana — awaiting your approval to go live.',
@@ -134,9 +134,11 @@ async function main() {
       const member = await prisma.member.create({
         data: {
           gymId: gym.id,
+          fighterId: String(2000 + i).padStart(8, '0'),
           firstName: first, lastName: last,
           email: `${first.toLowerCase()}.${last.toLowerCase()}${i}@example.com`,
           phone: `+1555${String(1000000 + i).slice(-7)}`,
+          birthYear: rand(1985, 2008),
           branchId: Math.random() < 0.7 ? pick(branches).id : null,
           goals: pick(['Lose weight and build endurance', 'Compete in amateur bouts', 'Learn self-defense', 'Build strength and confidence', 'Stay in fighting shape']),
           createdById: addedBy,
@@ -189,7 +191,7 @@ async function main() {
         }
 
         await prisma.payment.create({
-          data: { gymId: gym.id, memberId: member.id, amount: cls.price, currency: 'USD', type: 'MEMBERSHIP', status: 'COMPLETED', method: pick(['CARD','CASH']), description: `New enrollment — ${member.firstName} ${member.lastName} (${cls.name})`, paidAt: start },
+          data: { gymId: gym.id, memberId: member.id, amount: cls.price, currency: 'EGP', type: 'MEMBERSHIP', status: 'COMPLETED', method: pick(['CARD','CASH']), description: `New enrollment — ${member.firstName} ${member.lastName} (${cls.name})`, paidAt: start },
         })
       }
     }
@@ -215,8 +217,8 @@ async function main() {
 
   // ── Staff (salaried front-of-house / management, non-coach) ─────
   const staffDefs = [
-    { firstName: 'Jordan', lastName: 'Blake', email: 'jordan.staff@ironcladfc.com', role: 'MANAGER', salary: 3400 },
-    { firstName: 'Kim',    lastName: 'Adams', email: 'kim.staff@ironcladfc.com',    role: 'STAFF',   salary: 2600 },
+    { firstName: 'Jordan', lastName: 'Blake', email: 'jordan.staff@ironcladfc.com', role: 'MANAGER', salary: 14000 },
+    { firstName: 'Kim',    lastName: 'Adams', email: 'kim.staff@ironcladfc.com',    role: 'STAFF',   salary: 9000 },
   ]
   const staffMembers: any[] = []
   for (const s of staffDefs) {
@@ -239,15 +241,15 @@ async function main() {
 
   // ── Inventory (retail store) ─────────────────────────────────────
   const inventoryDefs = [
-    { name: 'Whey Protein (2lb)',        category: 'SUPPLEMENT',  costPrice: 18, sellPrice: 34, stock: 40 },
-    { name: 'Pre-Workout',               category: 'SUPPLEMENT',  costPrice: 14, sellPrice: 29, stock: 25 },
-    { name: 'Electrolyte Drink',         category: 'DRINK',       costPrice: 1.2, sellPrice: 4, stock: 120 },
-    { name: 'Sports Water (24pk)',       category: 'DRINK',       costPrice: 6, sellPrice: 12, stock: 30 },
-    { name: 'Ironclad FC T-Shirt',       category: 'MERCHANDISE', costPrice: 7, sellPrice: 22, stock: 60 },
-    { name: 'Ironclad FC Hoodie',        category: 'MERCHANDISE', costPrice: 16, sellPrice: 48, stock: 35 },
-    { name: 'Hand Wraps (5-Pack)',       category: 'GEAR',        costPrice: 10, sellPrice: 24, stock: 3 },
-    { name: 'Sparring Gloves (16oz)',    category: 'GEAR',        costPrice: 22, sellPrice: 55, stock: 15 },
-    { name: 'Mouthguard',                category: 'OTHER',       costPrice: 3, sellPrice: 9, stock: 50 },
+    { name: 'Whey Protein (2lb)',        category: 'SUPPLEMENT',  costPrice: 550, sellPrice: 950, stock: 40 },
+    { name: 'Pre-Workout',               category: 'SUPPLEMENT',  costPrice: 400, sellPrice: 750, stock: 25 },
+    { name: 'Electrolyte Drink',         category: 'DRINK',       costPrice: 25, sellPrice: 60, stock: 120 },
+    { name: 'Sports Water (24pk)',       category: 'DRINK',       costPrice: 150, sellPrice: 280, stock: 30 },
+    { name: 'Ironclad FC T-Shirt',       category: 'MERCHANDISE', costPrice: 180, sellPrice: 400, stock: 60 },
+    { name: 'Ironclad FC Hoodie',        category: 'MERCHANDISE', costPrice: 380, sellPrice: 750, stock: 35 },
+    { name: 'Hand Wraps (5-Pack)',       category: 'GEAR',        costPrice: 220, sellPrice: 420, stock: 3 },
+    { name: 'Sparring Gloves (16oz)',    category: 'GEAR',        costPrice: 650, sellPrice: 1200, stock: 15 },
+    { name: 'Mouthguard',                category: 'OTHER',       costPrice: 60, sellPrice: 150, stock: 50 },
   ]
   for (const i of inventoryDefs) {
     const existing = await prisma.inventoryItem.findFirst({ where: { gymId: gym.id, name: i.name } })

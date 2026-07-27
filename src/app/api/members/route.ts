@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionAndGym } from '@/lib/getGym'
-import { checkAndExpireEnrollment } from '@/lib/enrollment'
+import { checkAndExpireEnrollment, generateFighterId } from '@/lib/enrollment'
 
 // Attaches {xName} to rows by resolving the plain-string user id fields.
 async function withUserNames<T extends Record<string, any>>(rows: T[], idFields: string[]) {
@@ -93,14 +93,17 @@ export async function POST(req: NextRequest) {
   const { gym, user } = result
   try {
     const body = await req.json()
+    const fighterId = await generateFighterId(gym.id)
     const member = await prisma.member.create({
       data: {
         gymId:            gym.id,
+        fighterId,
         firstName:        body.firstName,
         lastName:         body.lastName,
-        email:            body.email,
+        email:            body.email            || null,
         phone:            body.phone            || null,
         photo:            body.photo            || null,
+        birthYear:        body.birthYear ? Number(body.birthYear) : null,
         branchId:         body.branchId         || null,
         goals:            body.goals            || null,
         healthConditions: body.healthConditions || null,
@@ -111,10 +114,11 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // Optionally sign into an initial class right away (most common flow)
+    // Optionally sign into an initial class right away — this is now optional,
+    // a fighter can be added first and enrolled later.
     if (body.classId) {
       const cls = await prisma.gymClass.findFirst({ where: { id: body.classId, gymId: gym.id } })
-      if (!cls) return NextResponse.json({ error: 'A valid class is required' }, { status: 400 })
+      if (!cls) return NextResponse.json({ error: 'Class not found' }, { status: 400 })
       const startDate = body.startDate ? new Date(body.startDate) : new Date()
       const endDate = new Date(startDate); endDate.setDate(endDate.getDate() + cls.durationDays)
 
@@ -127,8 +131,8 @@ export async function POST(req: NextRequest) {
 
       await prisma.payment.create({
         data: {
-          gymId: gym.id, memberId: member.id, amount: cls.price, currency: gym.currency || 'USD',
-          type: 'MEMBERSHIP', status: 'COMPLETED', method: 'CASH',
+          gymId: gym.id, memberId: member.id, amount: cls.price, currency: gym.currency || 'EGP',
+          type: 'MEMBERSHIP', status: 'COMPLETED', method: body.paymentMethod || null,
           description: `New enrollment — ${member.firstName} ${member.lastName} (${cls.name})`,
           paidAt: new Date(),
         },
@@ -160,6 +164,7 @@ export async function PATCH(req: NextRequest) {
   for (const field of allowedFields) {
     if (body[field] !== undefined) updateData[field] = body[field] ?? null
   }
+  if (body.birthYear !== undefined) updateData.birthYear = body.birthYear ? Number(body.birthYear) : null
   if (Object.keys(updateData).length > 0) {
     await prisma.member.update({ where: { id }, data: updateData })
   }

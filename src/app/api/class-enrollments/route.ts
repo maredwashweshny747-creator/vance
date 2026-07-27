@@ -37,8 +37,8 @@ export async function POST(req: NextRequest) {
 
     await prisma.payment.create({
       data: {
-        gymId: gym.id, memberId: member.id, amount: cls.price, currency: gym.currency || 'USD',
-        type: 'MEMBERSHIP', status: 'COMPLETED', method: 'CASH',
+        gymId: gym.id, memberId: member.id, amount: cls.price, currency: gym.currency || 'EGP',
+        type: 'MEMBERSHIP', status: 'COMPLETED', method: body.paymentMethod || null,
         description: `New enrollment — ${member.firstName} ${member.lastName} (${cls.name})`,
         paidAt: new Date(),
       },
@@ -108,7 +108,7 @@ export async function PATCH(req: NextRequest) {
     })
     await prisma.payment.create({
       data: {
-        gymId: gym.id, memberId: enr.memberId, amount: enr.class.price, currency: gym.currency || 'USD',
+        gymId: gym.id, memberId: enr.memberId, amount: enr.class.price, currency: gym.currency || 'EGP',
         type: 'MEMBERSHIP', status: 'COMPLETED', method: 'CASH',
         description: `Renewal — ${enr.member.firstName} ${enr.member.lastName} (${enr.class.name}), confirmed by ${user.name || user.email}`,
         paidAt: new Date(),
@@ -122,6 +122,33 @@ export async function PATCH(req: NextRequest) {
       where: { id }, data: { status: 'CANCELED', freezeStartedAt: null, lastAction: 'CANCELED', lastActionById: user.id, lastActionAt: new Date() },
     })
     return NextResponse.json({ success: true, message: 'Enrollment canceled.' })
+  }
+
+  // Switch to a different class mid-cycle (e.g. Kickboxing -> MMA). The remaining
+  // time on the current cycle carries over — no new charge, no lost days.
+  if (action === 'switch') {
+    const newClassId = body.newClassId
+    if (!newClassId) return NextResponse.json({ error: 'newClassId required' }, { status: 400 })
+    const newClass = await prisma.gymClass.findFirst({ where: { id: newClassId, gymId: gym.id } })
+    if (!newClass) return NextResponse.json({ error: 'Class not found' }, { status: 404 })
+    if (newClassId === enr.classId) return NextResponse.json({ error: 'Already signed into that class' }, { status: 400 })
+
+    const alreadyIn = await prisma.classEnrollment.findFirst({ where: { memberId: enr.memberId, classId: newClassId, status: { in: ['ACTIVE', 'FROZEN'] } } })
+    if (alreadyIn) return NextResponse.json({ error: `${enr.member.firstName} is already signed into ${newClass.name}` }, { status: 409 })
+
+    const now = new Date()
+    await prisma.classEnrollment.update({
+      where: { id }, data: { status: 'CANCELED', freezeStartedAt: null, lastAction: 'SWITCHED', lastActionById: user.id, lastActionAt: now },
+    })
+    const newEnrollment = await prisma.classEnrollment.create({
+      data: {
+        memberId: enr.memberId, classId: newClassId, status: 'ACTIVE',
+        startDate: now, endDate: enr.endDate, // keep the remaining time from the old cycle
+        addedById: user.id, lastAction: 'SWITCHED', lastActionById: user.id, lastActionAt: now,
+      },
+      include: { class: true },
+    })
+    return NextResponse.json({ success: true, message: `Switched from ${enr.class.name} to ${newClass.name} — remaining days carried over.`, enrollment: newEnrollment })
   }
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
