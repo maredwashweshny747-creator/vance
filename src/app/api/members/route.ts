@@ -105,11 +105,7 @@ export async function POST(req: NextRequest) {
         photo:            body.photo            || null,
         birthYear:        body.birthYear ? Number(body.birthYear) : null,
         branchId:         body.branchId         || null,
-        goals:            body.goals            || null,
-        healthConditions: body.healthConditions || null,
         notes:            body.notes            || null,
-        emergencyContact: body.emergencyContact || null,
-        emergencyPhone:   body.emergencyPhone   || null,
         createdById:      user.id,
       },
     })
@@ -132,7 +128,7 @@ export async function POST(req: NextRequest) {
       await prisma.payment.create({
         data: {
           gymId: gym.id, memberId: member.id, amount: cls.price, currency: gym.currency || 'EGP',
-          type: 'MEMBERSHIP', status: 'COMPLETED', method: body.paymentMethod || null,
+          type: 'MEMBERSHIP', status: 'COMPLETED', method: body.paymentMethod || null, proofPhoto: body.proofPhoto || null,
           description: `New enrollment — ${member.firstName} ${member.lastName} (${cls.name})`,
           paidAt: new Date(),
         },
@@ -160,7 +156,7 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json()
 
   const updateData: any = {}
-  const allowedFields = ['firstName','lastName','email','phone','photo','goals','notes','healthConditions','emergencyContact','emergencyPhone','branchId']
+  const allowedFields = ['firstName','lastName','email','phone','photo','notes','branchId']
   for (const field of allowedFields) {
     if (body[field] !== undefined) updateData[field] = body[field] ?? null
   }

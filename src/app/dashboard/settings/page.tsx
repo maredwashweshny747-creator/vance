@@ -6,7 +6,7 @@ import { Settings, User, Users, Plus, Trash2, Eye, EyeOff, X, ShieldCheck, Shiel
 import { cn, getInitials, formatCurrency } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
-interface GymSettings { name: string; address: string; phone: string; email: string; currency: string; timezone: string }
+interface GymSettings { name: string; address: string; phone: string; email: string; currency: string; timezone: string; whatsappMessageTemplate: string }
 interface TeamAccount { id: string; name: string; email: string; role: string; createdAt: string; coach?: { sessionRate: number; specialties?: string } | null }
 
 export default function SettingsPage() {
@@ -15,7 +15,7 @@ export default function SettingsPage() {
   const isAdmin = role === 'ADMIN'
 
   const [tab, setTab] = useState<'gym'|'team'>('gym')
-  const [gymData, setGymData] = useState<GymSettings>({ name:'', address:'', phone:'', email:'', currency:'EGP', timezone:'UTC' })
+  const [gymData, setGymData] = useState<GymSettings>({ name:'', address:'', phone:'', email:'', currency:'EGP', timezone:'UTC', whatsappMessageTemplate:'' })
   const [team, setTeam] = useState<TeamAccount[]>([])
   const [saving, setSaving] = useState(false)
   const [showAddTeam, setShowAddTeam] = useState(false)
@@ -24,7 +24,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     fetch('/api/settings').then(r => r.json()).then(d => {
-      if (d && !d.error) setGymData({ name: d.name||'', address: d.address||'', phone: d.phone||'', email: d.email||'', currency: d.currency||'EGP', timezone: d.timezone||'UTC' })
+      if (d && !d.error) setGymData({ name: d.name||'', address: d.address||'', phone: d.phone||'', email: d.email||'', currency: d.currency||'EGP', timezone: d.timezone||'UTC', whatsappMessageTemplate: d.whatsappMessageTemplate||'' })
     }).catch(() => {})
     if (isAdmin) {
       fetch('/api/staff-accounts').then(r => r.json()).then(d => { if (Array.isArray(d)) setTeam(d) }).catch(() => {})
@@ -111,6 +111,12 @@ export default function SettingsPage() {
                 <option value="Africa/Cairo">Cairo (EET)</option><option value="Asia/Dubai">Dubai (GST)</option>
               </select>
             </div>
+          </div>
+          <div>
+            <label className="label">Default WhatsApp Message</label>
+            <textarea value={gymData.whatsappMessageTemplate} onChange={e=>setGymData(d=>({...d,whatsappMessageTemplate:e.target.value}))}
+              className="input h-24 resize-none" placeholder="Hi {firstName}, this is Ironclad Fight Club checking in..." />
+            <p className="text-dark-500 text-xs mt-1.5">Pre-fills whenever you tap the WhatsApp button on a fighter&apos;s profile. Use <span className="font-mono text-dark-400">{'{firstName}'}</span> to personalize it.</p>
           </div>
           <button type="submit" disabled={saving} className="btn-primary disabled:opacity-50">
             {saving ? 'Saving…' : 'Save Changes'}

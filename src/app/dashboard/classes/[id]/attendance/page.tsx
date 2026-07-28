@@ -44,6 +44,14 @@ export default function ClassAttendancePage() {
 
   useEffect(() => { if (classId) load() }, [classId, date]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // One-time classes only have a single valid date — jump straight to it
+  useEffect(() => {
+    if (cls?.isOneTime && cls.sessionDate) {
+      const sessionDay = toDateInput(new Date(cls.sessionDate))
+      if (sessionDay !== date) setDate(sessionDay)
+    }
+  }, [cls]) // eslint-disable-line react-hooks/exhaustive-deps
+
   async function mark(entry: RosterEntry, status: string, reason?: string) {
     const res = await fetch('/api/class-attendance', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -83,7 +91,7 @@ export default function ClassAttendancePage() {
         <button onClick={() => shiftDate(-1)} className="p-2 rounded-lg hover:bg-dark-700 transition-colors"><ChevronLeft size={18}/></button>
         <div className="text-center">
           <input type="date" value={date} onChange={e => setDate(e.target.value)} className="bg-transparent text-white font-display text-xl tracking-wide text-center outline-none"/>
-          {cls && !isScheduledDay && (
+          {cls && !cls.isOneTime && !isScheduledDay && (
             <div className="text-yellow-400 text-xs mt-1">This class doesn&apos;t normally meet on this day</div>
           )}
         </div>

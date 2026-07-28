@@ -29,7 +29,10 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     if (!body.name) return NextResponse.json({ error: 'Class name is required' }, { status: 400 })
-    if (!Array.isArray(body.daysOfWeek) || body.daysOfWeek.length === 0) {
+    const isOneTime = !!body.isOneTime
+    if (isOneTime) {
+      if (!body.sessionDate) return NextResponse.json({ error: 'Pick a date for the session' }, { status: 400 })
+    } else if (!Array.isArray(body.daysOfWeek) || body.daysOfWeek.length === 0) {
       return NextResponse.json({ error: 'Pick at least one day of the week' }, { status: 400 })
     }
 
@@ -50,12 +53,14 @@ export async function POST(req: NextRequest) {
         description: body.description || null,
         category:    body.category    || null,
         type:        body.type === 'PRIVATE' ? 'PRIVATE' : 'GROUP',
-        daysOfWeek:  body.daysOfWeek,
+        isOneTime,
+        daysOfWeek:  isOneTime ? [] : body.daysOfWeek,
+        sessionDate: isOneTime ? new Date(body.sessionDate) : null,
         startTimeOfDay: body.startTimeOfDay || '18:00',
         duration:    Number(body.duration)  || 60,
         capacity:    Number(body.capacity)  || 20,
         price:       Number(body.price)     || 0,
-        durationDays: Number(body.durationDays) || 30,
+        durationDays: isOneTime ? 1 : (Number(body.durationDays) || 30),
         color:       body.color       || '#ffc700',
         location:    body.location    || null,
         coachId,
@@ -114,6 +119,8 @@ export async function PATCH(req: NextRequest) {
     }
   }
   if (body.daysOfWeek !== undefined && Array.isArray(body.daysOfWeek)) updateData.daysOfWeek = body.daysOfWeek
+  if (body.isOneTime !== undefined) updateData.isOneTime = !!body.isOneTime
+  if (body.sessionDate !== undefined) updateData.sessionDate = body.sessionDate ? new Date(body.sessionDate) : null
 
   let revertedToPending = false
   if (user.role === 'COACH' && cls.status === 'APPROVED') {

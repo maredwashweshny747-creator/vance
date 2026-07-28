@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
       include: { branch: { select: { name: true } }, enrollments: { include: { class: true } } },
       orderBy: { createdAt: 'desc' },
     })
-    const headers = ['id','firstName','lastName','email','phone','membershipPlans','membershipStatus','goals','healthConditions','emergencyContact','emergencyPhone','notes','branch','createdAt']
+    const headers = ['id','firstName','lastName','email','phone','membershipPlans','membershipStatus','notes','branch','createdAt']
     const rows = members.map(m => {
       const overallStatus = m.enrollments.some(e => e.status === 'ACTIVE') ? 'ACTIVE'
         : m.enrollments.some(e => e.status === 'FROZEN') ? 'FROZEN'
@@ -63,8 +63,6 @@ export async function GET(req: NextRequest) {
         email: m.email, phone: m.phone || '',
         membershipPlans: m.enrollments.map(e => e.class.name).join('; '),
         membershipStatus: overallStatus,
-        goals: m.goals || '', healthConditions: m.healthConditions || '',
-        emergencyContact: m.emergencyContact || '', emergencyPhone: m.emergencyPhone || '',
         notes: m.notes || '', branch: (m as any).branch?.name || '',
         createdAt: new Date(m.createdAt).toISOString().split('T')[0],
       }
@@ -117,7 +115,7 @@ export async function GET(req: NextRequest) {
 
   if (type === 'template') {
     // Return blank import template
-    const csv = 'firstName,lastName,email,phone,class,startDate,goals,healthConditions,emergencyContact,emergencyPhone,notes\nJohn,Doe,john@example.com,+1555000001,Kickboxing Adults,2024-01-01,Build muscle,None,Jane Doe,+1555000002,VIP fighter'
+    const csv = 'firstName,lastName,email,phone,class,startDate,notes\nJohn,Doe,john@example.com,+1555000001,Kickboxing Adults,2024-01-01,VIP fighter'
     return new NextResponse(csv, {
       headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="vance_import_template.csv"' },
     })
@@ -180,10 +178,6 @@ export async function POST(req: NextRequest) {
             lastName:  lastName.trim(),
             email:     email.trim().toLowerCase(),
             phone:     (row['phone'] || row['mobile'] || '').trim() || null,
-            goals:            row['goals'] || null,
-            healthConditions: row['healthconditions'] || row['health_conditions'] || row['healthConditions'] || null,
-            emergencyContact: row['emergencycontact'] || row['emergency_contact'] || row['emergencyContact'] || null,
-            emergencyPhone:   row['emergencyphone']   || row['emergency_phone']   || row['emergencyPhone']   || null,
             notes:            row['notes'] || null,
             createdById: user.id,
           },

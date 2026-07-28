@@ -25,17 +25,17 @@ interface Member {
   id: string; fighterId: string; firstName: string; lastName: string; email?: string; phone?: string; photo?: string | null
   birthYear?: number | null
   branchId?: string
-  goals?: string; notes?: string; healthConditions?: string
-  emergencyContact?: string; emergencyPhone?: string
+  notes?: string
   createdByIdName?: string | null; createdAt: string
   enrollments: Enrollment[]
   overallStatus?: string
   recentAttendance?: { id: string; date: string; status: string; class: { name: string } }[]
-  payments?: { id: string; amount: number; type: string; status: string; createdAt: string }[]
+  payments?: { id: string; amount: number; type: string; status: string; createdAt: string; method?: string | null; proofPhoto?: string | null }[]
 }
 
 const STATUS_OPTS = ['ALL', 'ACTIVE', 'FROZEN', 'EXPIRED', 'CANCELED', 'NO_PLAN']
-const PAYMENT_METHODS = ['CASH', 'CARD', 'BANK_TRANSFER']
+const PAYMENT_METHODS = ['CASH', 'CARD', 'BANK_TRANSFER', 'INSTAPAY', 'VODAFONE_CASH']
+const PROOF_REQUIRED_METHODS = ['INSTAPAY', 'VODAFONE_CASH']
 
 function resizeImage(file: File, maxSize = 400, quality = 0.85): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -101,6 +101,48 @@ function DaySchedule({ days }: { days: string[] }) {
   return <span className="text-dark-500">{days.map(d => DAY_LABELS[d] || d).join('/')}</span>
 }
 
+function PaymentMethodFields({ method, onMethod, proof, onProof }: { method: string; onMethod: (v: string) => void; proof: string; onProof: (v: string) => void }) {
+  const [uploading, setUploading] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const needsProof = PROOF_REQUIRED_METHODS.includes(method)
+
+  async function handleFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try { onProof(await resizeImage(file, 800, 0.85)) } catch { toast.error('Could not process that image') } finally { setUploading(false) }
+  }
+
+  return (
+    <div className="space-y-2">
+      <div>
+        <label className="label">Payment Method <span className="text-dark-500">(optional)</span></label>
+        <select value={method} onChange={e => onMethod(e.target.value)} className="input">
+          <option value="">Not specified</option>
+          {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m.replace('_',' ')}</option>)}
+        </select>
+      </div>
+      {needsProof && (
+        <div className="bg-blue-400/5 border border-blue-400/20 rounded-xl p-3">
+          <label className="label text-xs">Attach payment screenshot</label>
+          {proof ? (
+            <div className="flex items-center gap-3 mt-1">
+              <img src={proof} alt="Payment proof" className="w-16 h-16 object-cover rounded-lg border border-dark-600" />
+              <button type="button" onClick={() => inputRef.current?.click()} className="text-xs text-primary-400 hover:text-primary-300">Replace</button>
+              <button type="button" onClick={() => onProof('')} className="text-xs text-crimson-400 hover:text-crimson-300">Remove</button>
+            </div>
+          ) : (
+            <button type="button" onClick={() => inputRef.current?.click()} className="mt-1 flex items-center gap-2 text-xs text-dark-300 border border-dashed border-dark-500 rounded-lg px-3 py-2 hover:border-primary-400/50 hover:text-primary-400 transition-colors">
+              <Camera size={13}/> {uploading ? 'Processing…' : `Upload ${method === 'INSTAPAY' ? 'InstaPay' : 'Vodafone Cash'} screenshot`}
+            </button>
+          )}
+          <input ref={inputRef} type="file" accept="image/*" className="hidden" onChange={handleFile} />
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function FightersPage() {
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
@@ -113,19 +155,22 @@ export default function FightersPage() {
   const [showAddClass, setShowAddClass] = useState(false)
   const [renewTarget, setRenewTarget] = useState<Enrollment | null>(null)
   const [renewing, setRenewing] = useState(false)
+  const [renewPaymentMethod, setRenewPaymentMethod] = useState('')
+  const [renewProof, setRenewProof] = useState('')
   const [switchTarget, setSwitchTarget] = useState<Enrollment | null>(null)
   const [switchToClassId, setSwitchToClassId] = useState('')
   const [switching, setSwitching] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Member | null>(null)
   const [qrOpenFor, setQrOpenFor] = useState<string | null>(null)
+  const [whatsappTemplate, setWhatsappTemplate] = useState('')
   const { data: session } = useSession()
 
   const [addForm, setAddForm] = useState({
     firstName: '', lastName: '', email: '', phone: '', photo: '', birthYear: '',
-    classId: '', startDate: new Date().toISOString().split('T')[0], paymentMethod: '',
-    goals: '', notes: '', healthConditions: '', emergencyContact: '', emergencyPhone: '', branchId: '',
+    classId: '', startDate: new Date().toISOString().split('T')[0], paymentMethod: '', proofPhoto: '',
+    notes: '', branchId: '',
   })
-  const [addClassForm, setAddClassForm] = useState({ classId: '', startDate: new Date().toISOString().split('T')[0], paymentMethod: '' })
+  const [addClassForm, setAddClassForm] = useState({ classId: '', startDate: new Date().toISOString().split('T')[0], paymentMethod: '', proofPhoto: '' })
 
   function loadList() {
     setLoading(true)
@@ -147,6 +192,7 @@ export default function FightersPage() {
         if (approved[0]) { setAddForm(f => ({ ...f, classId: approved[0].id })); setAddClassForm(f => ({ ...f, classId: approved[0].id })) }
       }
     }).catch(() => {})
+    fetch('/api/settings').then(r => r.json()).then(d => { if (d && !d.error) setWhatsappTemplate(d.whatsappMessageTemplate || '') }).catch(() => {})
   }, [])
 
   async function openMember(id: string) {
@@ -161,7 +207,7 @@ export default function FightersPage() {
     if (res.ok) {
       toast.success('Fighter added!')
       setShowAdd(false)
-      setAddForm(f => ({ ...f, firstName: '', lastName: '', email: '', phone: '', photo: '', birthYear: '', paymentMethod: '', goals: '', notes: '', healthConditions: '', emergencyContact: '', emergencyPhone: '', branchId: '' }))
+      setAddForm(f => ({ ...f, firstName: '', lastName: '', email: '', phone: '', photo: '', birthYear: '', paymentMethod: '', proofPhoto: '', notes: '', branchId: '' }))
       loadList()
     } else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to add fighter') }
   }
@@ -184,10 +230,10 @@ export default function FightersPage() {
   async function confirmRenew() {
     if (!renewTarget) return
     setRenewing(true)
-    const res = await fetch(`/api/class-enrollments?id=${renewTarget.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _action: 'renew' }) })
+    const res = await fetch(`/api/class-enrollments?id=${renewTarget.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _action: 'renew', paymentMethod: renewPaymentMethod, proofPhoto: renewProof }) })
     const data = await res.json().catch(() => ({}))
     setRenewing(false)
-    if (res.ok) { toast.success(data.message || 'Renewed'); setRenewTarget(null); refreshSelected(); loadList() }
+    if (res.ok) { toast.success(data.message || 'Renewed'); setRenewTarget(null); setRenewPaymentMethod(''); setRenewProof(''); refreshSelected(); loadList() }
     else toast.error(data.error || 'Failed to renew')
   }
 
@@ -322,21 +368,15 @@ export default function FightersPage() {
                   </div>
                 </div>
                 {addForm.classId && (
-                  <div><label className="label">Payment Method (optional)</label>
-                    <select value={addForm.paymentMethod} onChange={e => setAddForm(f => ({ ...f, paymentMethod: e.target.value }))} className="input">
-                      <option value="">Not specified</option>
-                      {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m.replace('_',' ')}</option>)}
-                    </select>
-                  </div>
+                  <PaymentMethodFields
+                    method={addForm.paymentMethod} onMethod={v => setAddForm(f => ({ ...f, paymentMethod: v }))}
+                    proof={addForm.proofPhoto} onProof={v => setAddForm(f => ({ ...f, proofPhoto: v }))}
+                  />
                 )}
                 {classes.length === 0 && <p className="text-xs text-yellow-400/80">No approved classes yet — create one first in Classes.</p>}
                 <p className="text-xs text-dark-500">Training more than one discipline? Add this fighter first, then use &quot;+ Sign into another class&quot; from their profile.</p>
-                <div><label className="label">Goals</label><input value={addForm.goals} onChange={e => setAddForm(f => ({ ...f, goals: e.target.value }))} className="input" placeholder="e.g. Compete in amateur bouts" /></div>
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="label">Emergency Contact</label><input value={addForm.emergencyContact} onChange={e => setAddForm(f => ({ ...f, emergencyContact: e.target.value }))} className="input" /></div>
-                  <div><label className="label">Emergency Phone</label><input value={addForm.emergencyPhone} onChange={e => setAddForm(f => ({ ...f, emergencyPhone: e.target.value }))} className="input" /></div>
                 </div>
-                <div><label className="label">Health Conditions</label><input value={addForm.healthConditions} onChange={e => setAddForm(f => ({ ...f, healthConditions: e.target.value }))} className="input" placeholder="Allergies, injuries, etc." /></div>
                 <div className="flex gap-3 pt-2">
                   <button type="button" onClick={() => setShowAdd(false)} className="btn-ghost flex-1 justify-center">Cancel</button>
                   <button type="submit" className="btn-primary flex-1 justify-center">Add Fighter</button>
@@ -368,7 +408,7 @@ export default function FightersPage() {
                 {/* Quick actions */}
                 <div className="flex gap-2 flex-wrap">
                   {whatsappLink(selected.phone) && (
-                    <a href={whatsappLink(selected.phone)!} target="_blank" rel="noreferrer"
+                    <a href={whatsappLink(selected.phone, whatsappTemplate ? whatsappTemplate.replace(/\{firstName\}/g, selected.firstName) : null)!} target="_blank" rel="noreferrer"
                       className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary-400/10 border border-primary-400/20 text-primary-400 text-xs font-semibold hover:bg-primary-400/20 transition-colors">
                       <MessageCircle size={13}/> WhatsApp
                     </a>
@@ -399,9 +439,6 @@ export default function FightersPage() {
                     ['Phone', selected.phone || '—'],
                     ['Birth Year', selected.birthYear || '—'],
                     ['Branch', branches.find(b => b.id === selected.branchId)?.name || 'Unassigned'],
-                    ['Goals', selected.goals || '—'],
-                    ['Health Conditions', selected.healthConditions || '—'],
-                    ['Emergency Contact', selected.emergencyContact ? `${selected.emergencyContact} (${selected.emergencyPhone || 'no phone'})` : '—'],
                     ['Added by', `${selected.createdByIdName || 'Unknown'} on ${formatDate(selected.createdAt)}`],
                   ].map(([label, val]) => (
                     <div key={label} className="flex justify-between text-sm py-1 border-b border-dark-700 last:border-0">
@@ -499,10 +536,15 @@ export default function FightersPage() {
                   {(selected.payments || []).length === 0 ? <p className="text-dark-500 text-sm">No payments yet.</p> : (
                     <div className="space-y-1.5">
                       {(selected.payments || []).map(p => (
-                        <div key={p.id} className="flex justify-between text-xs py-1">
-                          <span className="text-dark-300">{p.type}</span>
-                          <span className="text-white">${p.amount.toFixed(2)}</span>
-                          <span className="text-dark-500">{formatDate(p.createdAt)}</span>
+                        <div key={p.id} className="flex justify-between items-center text-xs py-1 gap-2">
+                          <span className="text-dark-300 flex-1 truncate">{p.type}{p.method ? ` · ${p.method.replace('_',' ')}` : ''}</span>
+                          <span className="text-white flex-shrink-0">{formatCurrency(p.amount)}</span>
+                          {p.proofPhoto && (
+                            <a href={p.proofPhoto} target="_blank" rel="noreferrer" className="flex-shrink-0">
+                              <img src={p.proofPhoto} alt="proof" className="w-6 h-6 rounded object-cover border border-dark-600 hover:border-primary-400/50" />
+                            </a>
+                          )}
+                          <span className="text-dark-500 flex-shrink-0">{formatDate(p.createdAt)}</span>
                         </div>
                       ))}
                     </div>
@@ -533,12 +575,10 @@ export default function FightersPage() {
                   </select>
                 </div>
                 <div><label className="label">Start Date</label><input type="date" value={addClassForm.startDate} onChange={e => setAddClassForm(f => ({ ...f, startDate: e.target.value }))} className="input" /></div>
-                <div><label className="label">Payment Method (optional)</label>
-                  <select value={addClassForm.paymentMethod} onChange={e => setAddClassForm(f => ({ ...f, paymentMethod: e.target.value }))} className="input">
-                    <option value="">Not specified</option>
-                    {PAYMENT_METHODS.map(m => <option key={m} value={m}>{m.replace('_',' ')}</option>)}
-                  </select>
-                </div>
+                <PaymentMethodFields
+                  method={addClassForm.paymentMethod} onMethod={v => setAddClassForm(f => ({ ...f, paymentMethod: v }))}
+                  proof={addClassForm.proofPhoto} onProof={v => setAddClassForm(f => ({ ...f, proofPhoto: v }))}
+                />
                 <div className="flex gap-3 pt-2">
                   <button type="button" onClick={() => setShowAddClass(false)} className="btn-ghost flex-1 justify-center">Cancel</button>
                   <button type="submit" className="btn-primary flex-1 justify-center">Sign Up</button>
@@ -561,12 +601,15 @@ export default function FightersPage() {
               <h3 className="font-display text-2xl text-white mb-2">CONFIRM RENEWAL</h3>
               <p className="text-dark-300 text-sm mb-1">Renew <span className="text-white font-semibold">{renewTarget.class.name}</span> for {selected?.firstName}?</p>
               <p className="text-dark-400 text-xs mb-4">Starts a new {renewTarget.class.durationDays}-day cycle for {formatCurrency(renewTarget.class.price)}.</p>
+              <div className="mb-4">
+                <PaymentMethodFields method={renewPaymentMethod} onMethod={setRenewPaymentMethod} proof={renewProof} onProof={setRenewProof} />
+              </div>
               <div className="bg-dark-700 rounded-xl p-3 text-xs text-dark-300 mb-6 flex items-center gap-2">
                 <UserIcon size={13} className="text-primary-400 flex-shrink-0"/>
                 This renewal will be recorded as confirmed by <span className="text-white font-semibold">{currentUserName}</span>.
               </div>
               <div className="flex gap-3">
-                <button onClick={() => setRenewTarget(null)} className="btn-ghost flex-1 justify-center">Cancel</button>
+                <button onClick={() => { setRenewTarget(null); setRenewPaymentMethod(''); setRenewProof('') }} className="btn-ghost flex-1 justify-center">Cancel</button>
                 <button onClick={confirmRenew} disabled={renewing} className="btn-primary flex-1 justify-center disabled:opacity-50">
                   {renewing ? 'Renewing…' : 'Confirm Renewal'}
                 </button>

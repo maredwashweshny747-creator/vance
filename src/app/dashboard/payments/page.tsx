@@ -26,14 +26,24 @@ export default function PaymentsPage() {
       <div className="bg-dark-800 border border-dark-600 rounded-2xl overflow-hidden">
         <table className="w-full">
           <thead className="border-b border-dark-700"><tr>
-            {['Fighter','Type','Amount','Status','Date'].map(h => <th key={h} className="text-left text-xs text-dark-400 font-medium px-5 py-3">{h}</th>)}
+            {['Fighter','Type','Method','Amount','Status','Date'].map(h => <th key={h} className="text-left text-xs text-dark-400 font-medium px-5 py-3">{h}</th>)}
           </tr></thead>
           <tbody className="divide-y divide-dark-700">
-            {loading ? [...Array(5)].map((_,i) => <tr key={i}><td colSpan={5} className="px-5 py-4"><div className="h-5 skeleton rounded"/></td></tr>)
+            {loading ? [...Array(5)].map((_,i) => <tr key={i}><td colSpan={6} className="px-5 py-4"><div className="h-5 skeleton rounded"/></td></tr>)
             : payments.map((p: any) => (
               <tr key={p.id} className="hover:bg-dark-750 transition-colors">
                 <td className="px-5 py-4 text-white text-sm">{p.member ? `${p.member.firstName} ${p.member.lastName}` : '—'}</td>
                 <td className="px-5 py-4 text-dark-300 text-sm">{p.type}</td>
+                <td className="px-5 py-4 text-dark-300 text-sm">
+                  <div className="flex items-center gap-2">
+                    <span>{p.method ? p.method.replace('_',' ') : '—'}</span>
+                    {p.proofPhoto && (
+                      <a href={p.proofPhoto} target="_blank" rel="noreferrer">
+                        <img src={p.proofPhoto} alt="proof" className="w-6 h-6 rounded object-cover border border-dark-600 hover:border-primary-400/50" />
+                      </a>
+                    )}
+                  </div>
+                </td>
                 <td className="px-5 py-4 text-primary-400 font-mono text-sm font-bold">{formatCurrency(p.amount)}</td>
                 <td className="px-5 py-4"><span className={cn('badge', paymentColors[p.status])}>{p.status}</span></td>
                 <td className="px-5 py-4 text-dark-400 text-sm">{formatDate(p.createdAt)}</td>

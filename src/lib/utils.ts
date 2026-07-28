@@ -69,11 +69,11 @@ export function sessionsAllowedForCycle(daysPerWeek: number, durationDays: numbe
 }
 
 /** Builds a wa.me link from a phone number, stripping everything but digits and a leading +. */
-export function whatsappLink(phone?: string | null) {
+export function whatsappLink(phone?: string | null, message?: string | null) {
   if (!phone) return null
   const cleaned = phone.replace(/[^\d+]/g, '').replace(/^\+/, '')
   if (!cleaned) return null
-  return `https://wa.me/${cleaned}`
+  return message ? `https://wa.me/${cleaned}?text=${encodeURIComponent(message)}` : `https://wa.me/${cleaned}`
 }
 
 export const DAYS_OF_WEEK = ['MON','TUE','WED','THU','FRI','SAT','SUN']

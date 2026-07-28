@@ -19,6 +19,7 @@ interface Coach { id: string; firstName: string; lastName: string; specialties?:
 
 const BLANK_FORM = {
   name: '', description: '', category: 'MMA_ADULTS', type: 'GROUP', daysOfWeek: [] as string[],
+  isOneTime: false, sessionDate: new Date().toISOString().split('T')[0],
   startTimeOfDay: '18:00', duration: 60, capacity: 20, price: 59, durationDays: 30, color: '#ffc700', coachId: '',
 }
 
@@ -55,7 +56,9 @@ export default function ClassesPage() {
     setEditTarget(cls)
     setForm({
       name: cls.name, description: cls.description || '', category: cls.category || 'MMA_ADULTS',
-      type: cls.type, daysOfWeek: cls.daysOfWeek || [], startTimeOfDay: cls.startTimeOfDay || '18:00',
+      type: cls.type, daysOfWeek: cls.daysOfWeek || [],
+      isOneTime: !!cls.isOneTime, sessionDate: cls.sessionDate ? cls.sessionDate.split('T')[0] : new Date().toISOString().split('T')[0],
+      startTimeOfDay: cls.startTimeOfDay || '18:00',
       duration: cls.duration, capacity: cls.capacity, price: cls.price, durationDays: cls.durationDays,
       color: cls.color || '#ffc700', coachId: cls.coachId || '',
     })
@@ -68,7 +71,8 @@ export default function ClassesPage() {
 
   async function saveClass(e: React.FormEvent) {
     e.preventDefault()
-    if (form.daysOfWeek.length === 0) { toast.error('Pick at least one day of the week'); return }
+    if (!form.isOneTime && form.daysOfWeek.length === 0) { toast.error('Pick at least one day of the week'); return }
+    if (form.isOneTime && !form.sessionDate) { toast.error('Pick a date for the session'); return }
     if (editTarget) {
       const res = await fetch(`/api/classes?id=${editTarget.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
       const data = await res.json().catch(() => ({}))
@@ -154,7 +158,11 @@ export default function ClassesPage() {
                 <p className="text-dark-400 text-xs mb-3 line-clamp-2">{cls.description || 'No description'}</p>
                 {cls.coach && <p className="text-xs text-primary-400/80 mb-2 flex items-center gap-1"><UserIcon size={11}/> Coach {cls.coach.firstName} {cls.coach.lastName}</p>}
                 <div className="flex flex-wrap gap-1 mb-2">
-                  {(cls.daysOfWeek || []).map((d: string) => (
+                  {cls.isOneTime ? (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-400/10 text-blue-300 border border-blue-400/20 font-mono">
+                      ONE SESSION · {cls.sessionDate ? new Date(cls.sessionDate).toLocaleDateString() : '—'}
+                    </span>
+                  ) : (cls.daysOfWeek || []).map((d: string) => (
                     <span key={d} className="text-[10px] px-1.5 py-0.5 rounded bg-dark-700 text-dark-300 font-mono">{DAY_LABELS[d] || d}</span>
                   ))}
                 </div>
@@ -238,17 +246,39 @@ export default function ClassesPage() {
                 </div>
 
                 <div>
-                  <label className="label">Days of the Week — this defines the weekly session count</label>
-                  <div className="flex gap-1.5 flex-wrap mt-1">
-                    {DAYS_OF_WEEK.map(d => (
-                      <button key={d} type="button" onClick={() => toggleDay(d)}
-                        className={cn('w-11 h-9 rounded-lg text-xs font-semibold border transition-all',
-                          form.daysOfWeek.includes(d) ? 'bg-primary-400 border-primary-400 text-dark-950' : 'border-dark-600 text-dark-300 hover:border-dark-500')}>
-                        {DAY_LABELS[d]}
-                      </button>
-                    ))}
+                  <label className="label">Schedule</label>
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <button type="button" onClick={() => setForm(f => ({ ...f, isOneTime: false }))}
+                      className={cn('py-2 rounded-lg text-sm font-medium border transition-all', !form.isOneTime ? 'bg-primary-400/10 border-primary-400/30 text-primary-400' : 'border-dark-600 text-dark-400')}>
+                      Recurring Weekly
+                    </button>
+                    <button type="button" onClick={() => setForm(f => ({ ...f, isOneTime: true }))}
+                      className={cn('py-2 rounded-lg text-sm font-medium border transition-all', form.isOneTime ? 'bg-primary-400/10 border-primary-400/30 text-primary-400' : 'border-dark-600 text-dark-400')}>
+                      One Session
+                    </button>
                   </div>
-                  {form.daysOfWeek.length > 0 && <p className="text-primary-400 text-xs mt-1.5">{form.daysOfWeek.length} sessions / week</p>}
+
+                  {form.isOneTime ? (
+                    <div>
+                      <label className="label">Session Date</label>
+                      <input type="date" value={form.sessionDate} onChange={e => setForm(f => ({ ...f, sessionDate: e.target.value }))} required className="input" />
+                      <p className="text-dark-500 text-xs mt-1.5">A single one-off session — no weekly day selection needed.</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="label text-xs">Days of the Week — this defines the weekly session count</label>
+                      <div className="flex gap-1.5 flex-wrap mt-1">
+                        {DAYS_OF_WEEK.map(d => (
+                          <button key={d} type="button" onClick={() => toggleDay(d)}
+                            className={cn('w-11 h-9 rounded-lg text-xs font-semibold border transition-all',
+                              form.daysOfWeek.includes(d) ? 'bg-primary-400 border-primary-400 text-dark-950' : 'border-dark-600 text-dark-300 hover:border-dark-500')}>
+                            {DAY_LABELS[d]}
+                          </button>
+                        ))}
+                      </div>
+                      {form.daysOfWeek.length > 0 && <p className="text-primary-400 text-xs mt-1.5">{form.daysOfWeek.length} sessions / week</p>}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -259,7 +289,9 @@ export default function ClassesPage() {
                   <div><label className="label">Capacity</label><input type="number" value={form.capacity} onChange={e => setForm(f=>({...f,capacity:+e.target.value}))} min={1} className="input"/></div>
                   <div><label className="label">Price / cycle</label><input type="number" value={form.price} onChange={e => setForm(f=>({...f,price:+e.target.value}))} min={0} step={0.01} className="input"/></div>
                 </div>
-                <div><label className="label">Billing cycle length (days)</label><input type="number" value={form.durationDays} onChange={e => setForm(f=>({...f,durationDays:+e.target.value}))} min={1} className="input"/></div>
+                {!form.isOneTime && (
+                  <div><label className="label">Billing cycle length (days)</label><input type="number" value={form.durationDays} onChange={e => setForm(f=>({...f,durationDays:+e.target.value}))} min={1} className="input"/></div>
+                )}
 
                 {!isCoach && (
                   <div><label className="label">Coach (optional)</label>

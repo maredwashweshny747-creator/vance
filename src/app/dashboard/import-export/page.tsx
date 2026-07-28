@@ -107,9 +107,7 @@ export default function ImportExportPage() {
             {[
               { col:'firstName', req:true }, { col:'lastName', req:true }, { col:'email', req:true },
               { col:'phone', req:false }, { col:'class', req:false },
-              { col:'startDate', req:false }, { col:'goals', req:false },
-              { col:'healthConditions', req:false }, { col:'emergencyContact', req:false },
-              { col:'emergencyPhone', req:false }, { col:'notes', req:false },
+              { col:'startDate', req:false }, { col:'notes', req:false },
             ].map(({ col, req }) => (
               <span key={col} className={cn('text-xs px-2 py-1 rounded-lg font-mono', req ? 'bg-primary-400/10 text-primary-400 border border-primary-400/20' : 'bg-dark-700 text-dark-400')}>
                 {col}{req ? ' *' : ''}

@@ -140,7 +140,6 @@ async function main() {
           phone: `+1555${String(1000000 + i).slice(-7)}`,
           birthYear: rand(1985, 2008),
           branchId: Math.random() < 0.7 ? pick(branches).id : null,
-          goals: pick(['Lose weight and build endurance', 'Compete in amateur bouts', 'Learn self-defense', 'Build strength and confidence', 'Stay in fighting shape']),
           createdById: addedBy,
           createdAt,
         },

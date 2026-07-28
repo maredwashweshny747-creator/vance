@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { UserCheck, Search, Users, TrendingUp, AlertCircle, Clock, CheckCircle2, Zap, QrCode, X } from 'lucide-react'
 import Link from 'next/link'
-import { getInitials, formatDateTime } from '@/lib/utils'
+import { getInitials, formatDateTime, cn } from '@/lib/utils'
 import { disciplineLabel } from '@/lib/categories'
 import toast from 'react-hot-toast'
 
@@ -12,9 +12,12 @@ interface Member { id: string; firstName: string; lastName: string; email: strin
 interface CheckIn { id: string; checkedIn: string; method: string; member: Member; memberPlan?: { plan: { name: string; category?: string | null } } }
 interface Stats { checkIns: CheckIn[]; todayCount: number; weeklyCheckIns: number; inactiveCount: number }
 
+interface CoachRow { coachId: string; firstName: string; lastName: string; checkedIn: boolean; checkedInAt: string | null }
+
 export default function AttendancePage() {
   const [stats, setStats] = useState<Stats | null>(null)
   const [members, setMembers] = useState<Member[]>([])
+  const [coaches, setCoaches] = useState<CoachRow[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [checkingIn, setCheckingIn] = useState<string | null>(null)
@@ -26,13 +29,22 @@ export default function AttendancePage() {
       .then(d => { setStats(d); setLoading(false) })
       .catch(() => setLoading(false))
   }
+  function loadCoaches() {
+    fetch('/api/coach-attendance').then(r => r.ok ? r.json() : []).then(d => { if (Array.isArray(d)) setCoaches(d) }).catch(() => {})
+  }
 
   useEffect(() => {
     loadStats()
+    loadCoaches()
     fetch('/api/attendance?view=members')
       .then(r => r.json())
       .then(d => setMembers(Array.isArray(d) ? d : []))
   }, [])
+
+  async function checkInCoach(coachId: string) {
+    const res = await fetch('/api/coach-attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coachId }) })
+    if (res.ok) { toast.success('Coach checked in'); loadCoaches() } else { const d = await res.json().catch(()=>({})); toast.error(d.error || 'Failed') }
+  }
 
   const filtered = members.filter(m =>
     `${m.firstName} ${m.lastName} ${m.email}`.toLowerCase().includes(search.toLowerCase())
@@ -174,6 +186,31 @@ export default function AttendancePage() {
           </div>
         </div>
       </div>
+
+      {/* Coach attendance */}
+      {coaches.length > 0 && (
+        <div className="card">
+          <h2 className="font-display text-xl tracking-wider text-white mb-4">COACHES TODAY</h2>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {coaches.map(c => (
+              <div key={c.coachId} className={cn('flex items-center gap-3 p-3 rounded-xl border', c.checkedIn ? 'bg-primary-400/5 border-primary-400/20' : 'bg-dark-700 border-dark-600')}>
+                <div className="w-9 h-9 rounded-full bg-dark-600 border border-dark-500 flex items-center justify-center text-xs font-bold text-primary-400 flex-shrink-0">
+                  {getInitials(`${c.firstName} ${c.lastName}`)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-white text-sm font-medium truncate">{c.firstName} {c.lastName}</div>
+                  <div className="text-dark-400 text-xs">{c.checkedIn && c.checkedInAt ? `In at ${new Date(c.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Not checked in'}</div>
+                </div>
+                {c.checkedIn ? (
+                  <CheckCircle2 size={18} className="text-primary-400 flex-shrink-0"/>
+                ) : (
+                  <button onClick={() => checkInCoach(c.coachId)} className="flex-shrink-0 px-3 py-1.5 bg-primary-400/10 border border-primary-400/20 text-primary-400 text-xs rounded-lg hover:bg-primary-400/20 transition-colors">Check In</button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Inactive warning */}
       {stats && stats.inactiveCount > 0 && (

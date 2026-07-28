@@ -14,7 +14,11 @@ export async function GET(req: NextRequest) {
     if (user.role !== 'COACH') return NextResponse.json({ error: 'Coach only' }, { status: 403 })
     const coach = await prisma.coach.findFirst({ where: { gymId: gym.id, userId: user.id } })
     if (!coach) return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
-    return NextResponse.json(coach)
+    const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0,0,0,0)
+    const sessionsThisMonth = await prisma.classAttendance.count({
+      where: { status: 'ATTENDED', date: { gte: monthStart }, class: { coachId: coach.id } },
+    })
+    return NextResponse.json({ ...coach, sessionsThisMonth })
   }
 
   const coaches = await prisma.coach.findMany({

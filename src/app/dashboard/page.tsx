@@ -2,14 +2,22 @@
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { motion } from 'framer-motion'
-import { Users, DollarSign, Calendar, UserCheck, ArrowUpRight, ArrowDownRight, TrendingUp, AlertCircle, Activity, Swords, Hourglass, Clock } from 'lucide-react'
-import { formatCurrency, cn } from '@/lib/utils'
+import { Users, DollarSign, Calendar, UserCheck, ArrowUpRight, ArrowDownRight, TrendingUp, AlertCircle, Activity, Swords, Hourglass, Clock, CheckCircle2 } from 'lucide-react'
+import { formatCurrency, cn, DAY_LABELS } from '@/lib/utils'
 import Link from 'next/link'
+import toast from 'react-hot-toast'
 
 function CoachDashboard({ name }: { name: string }) {
   const [classes, setClasses] = useState<any[]>([])
   const [sessionRate, setSessionRate] = useState(0)
+  const [sessionsThisMonth, setSessionsThisMonth] = useState(0)
+  const [checkedIn, setCheckedIn] = useState(false)
+  const [checkingIn, setCheckingIn] = useState(false)
   const [loading, setLoading] = useState(true)
+
+  function loadAttendance() {
+    fetch('/api/coach-attendance?mine=true').then(r => r.ok ? r.json() : null).then(d => { if (d) setCheckedIn(!!d.checkedIn) }).catch(() => {})
+  }
 
   useEffect(() => {
     Promise.all([
@@ -18,24 +26,44 @@ function CoachDashboard({ name }: { name: string }) {
     ]).then(([cls, mine]) => {
       setClasses(Array.isArray(cls) ? cls : [])
       setSessionRate(mine?.sessionRate || 0)
+      setSessionsThisMonth(mine?.sessionsThisMonth || 0)
       setLoading(false)
     }).catch(() => setLoading(false))
+    loadAttendance()
   }, [])
 
-  const now = new Date()
-  const weekAhead = new Date(now.getTime() + 7 * 86400000)
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  async function checkIn() {
+    setCheckingIn(true)
+    const res = await fetch('/api/coach-attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+    setCheckingIn(false)
+    if (res.ok) { toast.success("You're checked in for today!"); setCheckedIn(true) }
+    else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to check in') }
+  }
 
   const pending = classes.filter(c => c.status === 'PENDING')
-  const upcoming = classes.filter(c => c.status === 'APPROVED' && new Date(c.startTime) >= now && new Date(c.startTime) <= weekAhead)
-  const taughtThisMonth = classes.filter(c => c.status === 'APPROVED' && new Date(c.startTime) >= monthStart && new Date(c.startTime) <= now)
-  const nextUp = classes.filter(c => c.status === 'APPROVED' && new Date(c.startTime) >= now).sort((a,b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()).slice(0, 5)
+  // A class is "on this week" if it's a one-time session in the next 7 days, or a
+  // recurring class (which by definition happens again within any given week).
+  const now = new Date()
+  const weekAhead = new Date(now.getTime() + 7 * 86400000)
+  const upcoming = classes.filter(c => c.status === 'APPROVED' && (
+    c.isOneTime ? (c.sessionDate && new Date(c.sessionDate) >= now && new Date(c.sessionDate) <= weekAhead) : c.daysOfWeek?.length > 0
+  ))
+  const nextUp = classes
+    .filter(c => c.status === 'APPROVED')
+    .slice(0, 5)
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="font-display text-4xl tracking-wider text-white">WELCOME, {name.split(' ')[0]?.toUpperCase()}</h1>
-        <p className="text-dark-300 text-sm mt-1">Your classes, private sessions, and earnings at a glance</p>
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h1 className="font-display text-4xl tracking-wider text-white">WELCOME, {name.split(' ')[0]?.toUpperCase()}</h1>
+          <p className="text-dark-300 text-sm mt-1">Your classes, private sessions, and earnings at a glance</p>
+        </div>
+        <button onClick={checkIn} disabled={checkedIn || checkingIn}
+          className={cn('flex items-center gap-2 font-bold px-5 py-2.5 rounded-xl text-sm transition-all active:scale-95',
+            checkedIn ? 'bg-primary-400/10 border border-primary-400/30 text-primary-400 cursor-default' : 'bg-primary-400 hover:bg-primary-300 text-dark-950')}>
+          <CheckCircle2 size={16}/> {checkedIn ? "You're checked in today" : checkingIn ? 'Checking in…' : 'Check In for Today'}
+        </button>
       </div>
 
       {loading ? (
@@ -43,9 +71,9 @@ function CoachDashboard({ name }: { name: string }) {
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
           <Link href="/dashboard/classes" className="block card-hover">
-            <div className="flex items-start justify-between mb-3"><span className="text-dark-400 text-xs">This Week</span><Clock size={15} className="text-primary-400"/></div>
+            <div className="flex items-start justify-between mb-3"><span className="text-dark-400 text-xs">On This Week</span><Clock size={15} className="text-primary-400"/></div>
             <div className="font-display text-3xl text-white mb-1">{upcoming.length}</div>
-            <div className="text-dark-500 text-xs">upcoming sessions</div>
+            <div className="text-dark-500 text-xs">classes running</div>
           </Link>
           <Link href="/dashboard/classes" className="block card-hover">
             <div className="flex items-start justify-between mb-3"><span className="text-dark-400 text-xs">Awaiting Approval</span><Hourglass size={15} className="text-yellow-400"/></div>
@@ -54,19 +82,19 @@ function CoachDashboard({ name }: { name: string }) {
           </Link>
           <div className="card-hover">
             <div className="flex items-start justify-between mb-3"><span className="text-dark-400 text-xs">Sessions This Month</span><Swords size={15} className="text-crimson-400"/></div>
-            <div className="font-display text-3xl text-white mb-1">{taughtThisMonth.length}</div>
+            <div className="font-display text-3xl text-white mb-1">{sessionsThisMonth}</div>
             <div className="text-dark-500 text-xs">taught so far</div>
           </div>
           <div className="card-hover">
             <div className="flex items-start justify-between mb-3"><span className="text-dark-400 text-xs">Est. Earnings</span><DollarSign size={15} className="text-primary-400"/></div>
-            <div className="font-display text-3xl text-white mb-1">{formatCurrency(taughtThisMonth.length * sessionRate)}</div>
+            <div className="font-display text-3xl text-white mb-1">{formatCurrency(sessionsThisMonth * sessionRate)}</div>
             <div className="text-dark-500 text-xs">{formatCurrency(sessionRate)}/session</div>
           </div>
         </div>
       )}
 
       <div className="card">
-        <h2 className="font-semibold text-white text-sm mb-3">Your Next Sessions</h2>
+        <h2 className="font-semibold text-white text-sm mb-3">Your Classes</h2>
         {nextUp.length === 0 ? (
           <p className="text-dark-500 text-sm">Nothing scheduled yet — submit a class or private session to get started.</p>
         ) : (
@@ -76,7 +104,9 @@ function CoachDashboard({ name }: { name: string }) {
                 <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: c.color || '#ffc700' }}/>
                 <span className="text-white text-sm flex-1 truncate">{c.name}</span>
                 <span className="text-xs text-dark-400 bg-dark-700 px-2 py-0.5 rounded-full">{c.type === 'PRIVATE' ? 'Private' : 'Group'}</span>
-                <span className="text-dark-400 text-xs">{new Date(c.startTime).toLocaleString(undefined, { weekday: 'short', hour: 'numeric', minute: '2-digit' })}</span>
+                <span className="text-dark-400 text-xs">
+                  {c.isOneTime ? (c.sessionDate ? new Date(c.sessionDate).toLocaleDateString() : 'One session') : (c.daysOfWeek || []).map((d: string) => DAY_LABELS[d] || d).join('/')}
+                </span>
               </div>
             ))}
           </div>

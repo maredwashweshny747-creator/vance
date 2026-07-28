@@ -68,6 +68,7 @@ model Gym {
   currency    String   @default("EGP")
   plan        String   @default("STARTER") // STARTER, PROFESSIONAL, ENTERPRISE
   planStatus  String   @default("ACTIVE")  // ACTIVE, PAST_DUE, CANCELED
+  whatsappMessageTemplate String? // pre-filled text used by the WhatsApp button on a fighter's profile
   stripeCustomerId     String?
   stripeSubscriptionId String?
   createdAt   DateTime @default(now())
@@ -103,10 +104,6 @@ model Member {
   dateOfBirth String?
   birthYear   Int?
   photo       String?
-  emergencyContact String?
-  emergencyPhone   String?
-  healthConditions String?
-  goals       String?
   notes       String?
   branchId         String?
   stripeCustomerId String?
@@ -149,8 +146,24 @@ model Coach {
   classes      GymClass[]
   workoutPlans WorkoutPlan[]
   payrollRuns  CoachPayrollRun[]
+  attendance   CoachAttendance[]
 
   @@unique([gymId, email])
+}
+
+// Tracks when a coach actually showed up (separate from a class's fighter roster —
+// this is "did the coach clock in", useful for accountability/payroll cross-checks).
+model CoachAttendance {
+  id        String   @id @default(cuid())
+  coachId   String
+  date      DateTime // calendar date of the shift
+  checkedIn DateTime @default(now())
+  method    String   @default("MANUAL") // MANUAL, QR
+  markedById String?
+
+  coach Coach @relation(fields: [coachId], references: [id], onDelete: Cascade)
+
+  @@unique([coachId, date])
 }
 
 // A class IS the subscribable plan: "Kickboxing Adults" meets Mon/Wed/Sat,
@@ -163,7 +176,9 @@ model GymClass {
   description String?
   category    String?  // discipline (see src/lib/categories.ts)
   type        String   @default("GROUP") // GROUP, PRIVATE
-  daysOfWeek     String[] @default([]) // which days it meets each week, e.g. ['MON','WED','SAT']
+  daysOfWeek     String[] @default([]) // which days it meets each week, e.g. ['MON','WED','SAT'] — empty when isOneTime
+  isOneTime      Boolean  @default(false) // a single one-off session instead of a recurring weekly class
+  sessionDate    DateTime? // the one date it happens, only used when isOneTime
   startTimeOfDay String   @default("18:00") // "HH:MM", 24h
   duration    Int      @default(60) // minutes per session
   capacity    Int      @default(20)
@@ -251,7 +266,8 @@ model Payment {
   currency    String   @default("EGP")
   type        String   // MEMBERSHIP, CLASS, PERSONAL_TRAINING, PRODUCT
   status      String   @default("PENDING") // PENDING, COMPLETED, FAILED, REFUNDED
-  method      String?  // CARD, CASH, BANK_TRANSFER
+  method      String?  // CARD, CASH, BANK_TRANSFER, INSTAPAY, VODAFONE_CASH
+  proofPhoto  String?  // screenshot of the transfer, for InstaPay / Vodafone Cash
   description String?
   branchId      String?
   stripePaymentIntentId String?

@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     await prisma.payment.create({
       data: {
         gymId: gym.id, memberId: member.id, amount: cls.price, currency: gym.currency || 'EGP',
-        type: 'MEMBERSHIP', status: 'COMPLETED', method: body.paymentMethod || null,
+        type: 'MEMBERSHIP', status: 'COMPLETED', method: body.paymentMethod || null, proofPhoto: body.proofPhoto || null,
         description: `New enrollment — ${member.firstName} ${member.lastName} (${cls.name})`,
         paidAt: new Date(),
       },
@@ -109,7 +109,7 @@ export async function PATCH(req: NextRequest) {
     await prisma.payment.create({
       data: {
         gymId: gym.id, memberId: enr.memberId, amount: enr.class.price, currency: gym.currency || 'EGP',
-        type: 'MEMBERSHIP', status: 'COMPLETED', method: 'CASH',
+        type: 'MEMBERSHIP', status: 'COMPLETED', method: body.paymentMethod || null, proofPhoto: body.proofPhoto || null,
         description: `Renewal — ${enr.member.firstName} ${enr.member.lastName} (${enr.class.name}), confirmed by ${user.name || user.email}`,
         paidAt: new Date(),
       },
