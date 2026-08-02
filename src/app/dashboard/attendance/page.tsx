@@ -12,7 +12,11 @@ interface Member { id: string; firstName: string; lastName: string; email: strin
 interface CheckIn { id: string; checkedIn: string; method: string; member: Member; memberPlan?: { plan: { name: string; category?: string | null } } }
 interface Stats { checkIns: CheckIn[]; todayCount: number; weeklyCheckIns: number; inactiveCount: number }
 
-interface CoachRow { coachId: string; firstName: string; lastName: string; checkedIn: boolean; checkedInAt: string | null }
+interface CoachRow {
+  coachId: string; firstName: string; lastName: string
+  todaysClasses: { id: string; name: string; checkedIn: boolean }[]
+  assignedThisMonth: number; attendedThisMonth: number; missedThisMonth: number
+}
 
 export default function AttendancePage() {
   const [stats, setStats] = useState<Stats | null>(null)
@@ -41,8 +45,8 @@ export default function AttendancePage() {
       .then(d => setMembers(Array.isArray(d) ? d : []))
   }, [])
 
-  async function checkInCoach(coachId: string) {
-    const res = await fetch('/api/coach-attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coachId }) })
+  async function checkInCoach(coachId: string, classId: string) {
+    const res = await fetch('/api/coach-attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coachId, classId, status: 'ATTENDED' }) })
     if (res.ok) { toast.success('Coach checked in'); loadCoaches() } else { const d = await res.json().catch(()=>({})); toast.error(d.error || 'Failed') }
   }
 
@@ -190,21 +194,34 @@ export default function AttendancePage() {
       {/* Coach attendance */}
       {coaches.length > 0 && (
         <div className="card">
-          <h2 className="font-display text-xl tracking-wider text-white mb-4">COACHES TODAY</h2>
+          <h2 className="font-display text-xl tracking-wider text-white mb-4">COACHES</h2>
           <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {coaches.map(c => (
-              <div key={c.coachId} className={cn('flex items-center gap-3 p-3 rounded-xl border', c.checkedIn ? 'bg-primary-400/5 border-primary-400/20' : 'bg-dark-700 border-dark-600')}>
-                <div className="w-9 h-9 rounded-full bg-dark-600 border border-dark-500 flex items-center justify-center text-xs font-bold text-primary-400 flex-shrink-0">
-                  {getInitials(`${c.firstName} ${c.lastName}`)}
+              <div key={c.coachId} className="p-3 rounded-xl border bg-dark-700 border-dark-600">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-9 h-9 rounded-full bg-dark-600 border border-dark-500 flex items-center justify-center text-xs font-bold text-primary-400 flex-shrink-0">
+                    {getInitials(`${c.firstName} ${c.lastName}`)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-white text-sm font-medium truncate">{c.firstName} {c.lastName}</div>
+                    <div className="text-dark-500 text-xs">{c.attendedThisMonth} attended · {c.missedThisMonth} missed this month</div>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-white text-sm font-medium truncate">{c.firstName} {c.lastName}</div>
-                  <div className="text-dark-400 text-xs">{c.checkedIn && c.checkedInAt ? `In at ${new Date(c.checkedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Not checked in'}</div>
-                </div>
-                {c.checkedIn ? (
-                  <CheckCircle2 size={18} className="text-primary-400 flex-shrink-0"/>
+                {c.todaysClasses.length === 0 ? (
+                  <p className="text-dark-500 text-xs">No classes scheduled today</p>
                 ) : (
-                  <button onClick={() => checkInCoach(c.coachId)} className="flex-shrink-0 px-3 py-1.5 bg-primary-400/10 border border-primary-400/20 text-primary-400 text-xs rounded-lg hover:bg-primary-400/20 transition-colors">Check In</button>
+                  <div className="space-y-1.5">
+                    {c.todaysClasses.map(cls => (
+                      <div key={cls.id} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-dark-300 truncate flex-1">{cls.name}</span>
+                        {cls.checkedIn ? (
+                          <CheckCircle2 size={14} className="text-primary-400 flex-shrink-0"/>
+                        ) : (
+                          <button onClick={() => checkInCoach(c.coachId, cls.id)} className="flex-shrink-0 px-2 py-1 bg-primary-400/10 border border-primary-400/20 text-primary-400 rounded-md hover:bg-primary-400/20 transition-colors">Check In</button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             ))}

@@ -63,7 +63,49 @@ access here).
 
 ---
 
-## 2026-07-27 — Claude (chat) — Removed profile fields, one-time classes, InstaPay/Vodafone Cash proof photos, WhatsApp template, coach attendance
+## 2026-07-28 — Claude (chat) — Reworked coach attendance to be class-tied + QR, fighter edit restored, WhatsApp placeholders expanded, remaining-sessions stat
+
+**Changed:**
+- **Coach attendance redesigned** — replaced the previous simple daily
+  check-in with per-class attendance (`CoachAttendance` now has `classId`,
+  `status: ATTENDED|ABSENT`, unique on `(coachId, classId, date)`). Coaches
+  get a personal QR (`vance:coach:{coachId}`) shown on their own dashboard;
+  the scanner page now detects fighter vs. coach QR prefixes and branches.
+  "Assigned" sessions per coach/class this month computed live from the
+  class's schedule (`scheduledOccurrencesThisMonth()`, new in
+  `src/lib/enrollment.ts`). Shown on: coach's own dashboard, main Attendance
+  page's Coaches panel (now with monthly attended/missed, not just a daily
+  yes/no), and each class's roster page (assigned coach + mark button).
+- Restored fighter data editing — there was no edit affordance at all
+  before this (a past session apparently dropped it without the user
+  asking). Added an Edit button on the Fighter Data card in the detail
+  panel; toggles into an inline form (name/email/phone/birth year/branch/
+  notes), Save hits the existing `PATCH /api/members`.
+- WhatsApp template placeholders expanded from just `{firstName}` to also
+  support `{fightername}`, `{fighterid}`, `{fighter qrcode}` (a link, not
+  an embedded image — `wa.me`'s text param is plain text only).
+- Fighter enrollment cards now show a 4th stat, "Remaining" (sessions left
+  in the cycle), alongside Attended/Exception/Absent.
+
+**Why:** Direct user request — see conversation history for exact wording.
+Item 2 (restoring the edit button) wasn't something I broke this session —
+worth noting for whoever reads this that a missing obviously-expected
+affordance is a thing to watch for even without an explicit bug report.
+
+**Watch out for:** If you see `CoachAttendance` referenced anywhere with a
+bare `date` and no `classId`, that's from the old design — the model
+signature changed shape entirely, not just gained a field.
+
+**Verified with:** `tsc --noEmit` clean across the whole project (checked
+after every one of the 4 changes individually, not just at the end).
+`next build` reached the same font-fetch network wall as every prior
+session in this sandbox — never got to see the real type-check gate this
+time either; still worth running `next build` locally as the stronger
+check.
+
+---
+
+
 
 **Changed:**
 - Removed `goals`, `emergencyContact`, `emergencyPhone`, `healthConditions`

@@ -89,15 +89,39 @@ base64-resize-on-client pattern as fighter profile photos) — see
 reused across the Add Fighter, Sign-into-Class, and Renew flows.
 
 **WhatsApp default message**: `Gym.whatsappMessageTemplate`, editable in
-Settings, supports a `{firstName}` placeholder substituted client-side
-before building the `wa.me` link (see `whatsappLink()` in
-`src/lib/utils.ts`, now takes an optional message argument).
+Settings, supports placeholders substituted client-side by
+`buildWhatsappMessage()` in `src/app/dashboard/fighters/page.tsx`:
+`{firstName}`, `{fightername}` (full name), `{fighterid}`, and
+`{fighter qrcode}` (a link to their check-in QR image — WhatsApp can't
+embed an image via the `wa.me` text param, so this resolves to a clickable
+URL, not an inline image). Built on top of `whatsappLink()` in
+`src/lib/utils.ts`, which takes an optional pre-filled message argument.
 
-**Coach attendance** (`CoachAttendance` model) is separate from fighter
-class attendance — it's "did the coach show up today," not tied to a
-specific class. One row per `(coachId, date)`. A coach can self-check-in
-from their own dashboard; admin/receptionist can check in on their behalf
-from the main Attendance page's "Coaches Today" section.
+**Session math on a fighter's enrollment card** (Attended / Exception /
+Absent / Remaining) all come from `attachMonthSummaries()` in
+`src/app/api/members/route.ts`. "Remaining" = `sessionsAllowed - attended`
+(floored at 0), using the same `sessionsAllowedForCycle()` /
+one-time-is-always-1 logic as `checkAndExpireEnrollment` — keep these two
+in sync if the exhaustion rule ever changes, they'll silently drift apart
+otherwise.
+
+**Coach attendance** (`CoachAttendance` model) is tied to a specific class
+and date — "did this coach show up to teach class X on date Y" — not a
+generic daily check-in (this was reworked from an earlier, simpler
+same-session design; if you see references to a bare `date`-only coach
+check-in anywhere, it's stale). One row per `(coachId, classId, date)`. A
+coach has their own personal QR code (`vance:coach:{coachId}`, distinct
+prefix from a fighter's `vance:checkin:{memberId}`) shown on their own
+dashboard; the scanner page (`/dashboard/attendance/scan`) detects which
+prefix it's looking at and branches accordingly. If a coach teaches more
+than one class scheduled for today, scanning prompts which one (same
+pattern as a fighter with multiple active enrollments). "Assigned" sessions
+for a coach/class this month is computed from the class's actual schedule
+(`scheduledOccurrencesThisMonth()` in `src/lib/enrollment.ts`), not stored —
+attended/missed are then derived against that. Visible on: the coach's own
+dashboard (today's classes + check-in), the main Attendance page ("Coaches"
+panel, monthly attended/missed per coach), and each class's own roster page
+(that class's assigned coach + mark button for the selected date).
 
 ## Known traps for whoever edits this next
 

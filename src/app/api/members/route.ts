@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionAndGym } from '@/lib/getGym'
 import { checkAndExpireEnrollment, generateFighterId } from '@/lib/enrollment'
+import { sessionsAllowedForCycle } from '@/lib/utils'
 
 // Attaches {xName} to rows by resolving the plain-string user id fields.
 async function withUserNames<T extends Record<string, any>>(rows: T[], idFields: string[]) {
@@ -27,7 +28,9 @@ async function attachMonthSummaries(enrollments: any[]) {
       prisma.classAttendance.count({ where: { enrollmentId: e.id, date: { gte: monthStart }, status: 'EXCUSED' } }),
       prisma.classAttendance.count({ where: { enrollmentId: e.id, date: { gte: monthStart }, status: 'ABSENT' } }),
     ])
-    return { ...e, monthSummary: { attended, excused, absent } }
+    const sessionsAllowed = e.class?.isOneTime ? 1 : sessionsAllowedForCycle(e.class?.daysOfWeek?.length || 0, e.class?.durationDays || 30)
+    const remaining = Math.max(0, sessionsAllowed - attended)
+    return { ...e, monthSummary: { attended, excused, absent, remaining, sessionsAllowed } }
   }))
 }
 

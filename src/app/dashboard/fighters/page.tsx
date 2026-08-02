@@ -4,7 +4,7 @@ import { useSession } from 'next-auth/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, Plus, X, Trash2, Snowflake, RefreshCw, Ban, Camera,
-  MessageCircle, QrCode, AlertTriangle, ChevronRight, ArrowLeftRight,
+  MessageCircle, QrCode, AlertTriangle, ChevronRight, ArrowLeftRight, Pencil, Hourglass,
   CheckCircle2, XCircle, MinusCircle, User as UserIcon,
 } from 'lucide-react'
 import { cn, formatDate, formatCurrency, membershipColors, getInitials, whatsappLink, DAY_LABELS } from '@/lib/utils'
@@ -12,7 +12,7 @@ import { disciplineLabel } from '@/lib/categories'
 import toast from 'react-hot-toast'
 
 interface ClassInfo { id: string; name: string; category?: string | null; daysOfWeek: string[]; price: number; durationDays: number; status: string }
-interface MonthSummary { attended: number; excused: number; absent: number }
+interface MonthSummary { attended: number; excused: number; absent: number; remaining: number; sessionsAllowed: number }
 interface Enrollment {
   id: string; classId: string; class: ClassInfo; status: string
   startDate: string; endDate?: string
@@ -143,6 +143,18 @@ function PaymentMethodFields({ method, onMethod, proof, onProof }: { method: str
   )
 }
 
+function fighterQrUrl(memberId: string) {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent('vance:checkin:' + memberId)}&bgcolor=ffffff&color=000000`
+}
+
+function buildWhatsappMessage(template: string, m: { id: string; firstName: string; lastName: string; fighterId: string }) {
+  return template
+    .replace(/\{firstName\}/gi, m.firstName)
+    .replace(/\{fightername\}/gi, `${m.firstName} ${m.lastName}`)
+    .replace(/\{fighterid\}/gi, m.fighterId)
+    .replace(/\{fighter qrcode\}/gi, fighterQrUrl(m.id))
+}
+
 export default function FightersPage() {
   const [members, setMembers] = useState<Member[]>([])
   const [loading, setLoading] = useState(true)
@@ -163,6 +175,9 @@ export default function FightersPage() {
   const [deleteTarget, setDeleteTarget] = useState<Member | null>(null)
   const [qrOpenFor, setQrOpenFor] = useState<string | null>(null)
   const [whatsappTemplate, setWhatsappTemplate] = useState('')
+  const [editingFighter, setEditingFighter] = useState(false)
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '', phone: '', birthYear: '', branchId: '', notes: '' })
+  const [savingEdit, setSavingEdit] = useState(false)
   const { data: session } = useSession()
 
   const [addForm, setAddForm] = useState({
@@ -197,9 +212,26 @@ export default function FightersPage() {
 
   async function openMember(id: string) {
     const res = await fetch(`/api/members?id=${id}`)
-    if (res.ok) setSelected(await res.json())
+    if (res.ok) {
+      const m = await res.json()
+      setSelected(m)
+      setEditingFighter(false)
+      setEditForm({ firstName: m.firstName || '', lastName: m.lastName || '', email: m.email || '', phone: m.phone || '', birthYear: m.birthYear ? String(m.birthYear) : '', branchId: m.branchId || '', notes: m.notes || '' })
+    }
   }
   function refreshSelected() { if (selected) openMember(selected.id) }
+
+  async function saveFighterEdit() {
+    if (!selected) return
+    setSavingEdit(true)
+    const res = await fetch(`/api/members?id=${selected.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...editForm, email: editForm.email || null, birthYear: editForm.birthYear || null, branchId: editForm.branchId || null }),
+    })
+    setSavingEdit(false)
+    if (res.ok) { toast.success('Fighter updated'); setEditingFighter(false); refreshSelected(); loadList() }
+    else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to save') }
+  }
 
   async function addMember(e: React.FormEvent) {
     e.preventDefault()
@@ -408,7 +440,7 @@ export default function FightersPage() {
                 {/* Quick actions */}
                 <div className="flex gap-2 flex-wrap">
                   {whatsappLink(selected.phone) && (
-                    <a href={whatsappLink(selected.phone, whatsappTemplate ? whatsappTemplate.replace(/\{firstName\}/g, selected.firstName) : null)!} target="_blank" rel="noreferrer"
+                    <a href={whatsappLink(selected.phone, whatsappTemplate ? buildWhatsappMessage(whatsappTemplate, selected) : null)!} target="_blank" rel="noreferrer"
                       className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-primary-400/10 border border-primary-400/20 text-primary-400 text-xs font-semibold hover:bg-primary-400/20 transition-colors">
                       <MessageCircle size={13}/> WhatsApp
                     </a>
@@ -425,26 +457,61 @@ export default function FightersPage() {
 
                 {qrOpenFor === selected.id && (
                   <div className="card flex flex-col items-center gap-2 py-6">
-                    <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent('vance:checkin:' + selected.id)}&bgcolor=ffffff&color=000000`} alt="Check-in QR code" className="rounded-lg" />
+                    <img src={fighterQrUrl(selected.id)} alt="Check-in QR code" className="rounded-lg" />
                     <p className="text-dark-400 text-xs">Scan at check-in — {selected.firstName} {selected.lastName}</p>
                   </div>
                 )}
 
                 {/* Fighter data */}
                 <div className="card space-y-2">
-                  <h3 className="text-white font-semibold text-sm mb-1">Fighter Data</h3>
-                  {[
-                    ['Fighter ID (portal login)', selected.fighterId],
-                    ['Email', selected.email || '—'],
-                    ['Phone', selected.phone || '—'],
-                    ['Birth Year', selected.birthYear || '—'],
-                    ['Branch', branches.find(b => b.id === selected.branchId)?.name || 'Unassigned'],
-                    ['Added by', `${selected.createdByIdName || 'Unknown'} on ${formatDate(selected.createdAt)}`],
-                  ].map(([label, val]) => (
-                    <div key={label} className="flex justify-between text-sm py-1 border-b border-dark-700 last:border-0">
-                      <span className="text-dark-400">{label}</span><span className="text-white text-right max-w-[60%]">{val}</span>
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="text-white font-semibold text-sm">Fighter Data</h3>
+                    {!editingFighter && (
+                      <button onClick={() => setEditingFighter(true)} className="flex items-center gap-1 text-xs text-primary-400 hover:text-primary-300"><Pencil size={12}/> Edit</button>
+                    )}
+                  </div>
+                  {editingFighter ? (
+                    <div className="space-y-2 pt-1">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div><label className="label text-xs">First Name</label><input value={editForm.firstName} onChange={e => setEditForm(f => ({ ...f, firstName: e.target.value }))} className="input py-2 text-sm" /></div>
+                        <div><label className="label text-xs">Last Name</label><input value={editForm.lastName} onChange={e => setEditForm(f => ({ ...f, lastName: e.target.value }))} className="input py-2 text-sm" /></div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div><label className="label text-xs">Email</label><input type="email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} className="input py-2 text-sm" /></div>
+                        <div><label className="label text-xs">Phone</label><input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} className="input py-2 text-sm" /></div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div><label className="label text-xs">Birth Year</label><input type="number" value={editForm.birthYear} onChange={e => setEditForm(f => ({ ...f, birthYear: e.target.value }))} className="input py-2 text-sm" placeholder="e.g. 1995" /></div>
+                        <div><label className="label text-xs">Branch</label>
+                          <select value={editForm.branchId} onChange={e => setEditForm(f => ({ ...f, branchId: e.target.value }))} className="input py-2 text-sm">
+                            <option value="">Unassigned</option>
+                            {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div><label className="label text-xs">Notes</label><textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} className="input py-2 text-sm h-16 resize-none" /></div>
+                      <div className="flex gap-2 pt-1">
+                        <button onClick={() => setEditingFighter(false)} className="btn-ghost flex-1 justify-center text-sm py-2">Cancel</button>
+                        <button onClick={saveFighterEdit} disabled={savingEdit} className="btn-primary flex-1 justify-center text-sm py-2 disabled:opacity-50">{savingEdit ? 'Saving…' : 'Save'}</button>
+                      </div>
                     </div>
-                  ))}
+                  ) : (
+                    <>
+                      {[
+                        ['Fighter ID (portal login)', selected.fighterId],
+                        ['Email', selected.email || '—'],
+                        ['Phone', selected.phone || '—'],
+                        ['Birth Year', selected.birthYear || '—'],
+                        ['Branch', branches.find(b => b.id === selected.branchId)?.name || 'Unassigned'],
+                        ['Notes', selected.notes || '—'],
+                        ['Added by', `${selected.createdByIdName || 'Unknown'} on ${formatDate(selected.createdAt)}`],
+                      ].map(([label, val]) => (
+                        <div key={label} className="flex justify-between text-sm py-1 border-b border-dark-700 last:border-0">
+                          <span className="text-dark-400">{label}</span><span className="text-white text-right max-w-[60%]">{val}</span>
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
 
                 {/* Classes / enrollments */}
@@ -469,9 +536,9 @@ export default function FightersPage() {
                           <span className={cn('badge text-xs', membershipColors[e.status])}>{e.status}</span>
                         </div>
 
-                        {/* Monthly session summary: attended / excused / absent */}
+                        {/* Monthly session summary: attended / excused / absent / remaining */}
                         {e.monthSummary && (
-                          <div className="grid grid-cols-3 gap-2 my-3">
+                          <div className="grid grid-cols-4 gap-2 my-3">
                             <div className="bg-primary-400/5 border border-primary-400/20 rounded-lg py-2 text-center">
                               <div className="flex items-center justify-center gap-1 text-primary-400"><CheckCircle2 size={12}/><span className="text-lg font-bold">{e.monthSummary.attended}</span></div>
                               <div className="text-dark-400 text-[10px] uppercase tracking-wide mt-0.5">Attended</div>
@@ -483,6 +550,10 @@ export default function FightersPage() {
                             <div className="bg-crimson-400/5 border border-crimson-400/20 rounded-lg py-2 text-center">
                               <div className="flex items-center justify-center gap-1 text-crimson-400"><XCircle size={12}/><span className="text-lg font-bold">{e.monthSummary.absent}</span></div>
                               <div className="text-dark-400 text-[10px] uppercase tracking-wide mt-0.5">Absent</div>
+                            </div>
+                            <div className="bg-dark-700 border border-dark-600 rounded-lg py-2 text-center">
+                              <div className="flex items-center justify-center gap-1 text-white"><Hourglass size={12}/><span className="text-lg font-bold">{e.monthSummary.remaining}</span></div>
+                              <div className="text-dark-400 text-[10px] uppercase tracking-wide mt-0.5">Remaining</div>
                             </div>
                           </div>
                         )}

@@ -9,6 +9,7 @@ import { disciplineLabel } from '@/lib/categories'
 interface ScanResult {
   ok: boolean
   member?: { firstName: string; lastName: string; enrollments?: { class: { name: string } }[] }
+  coach?: { firstName: string; lastName: string; className?: string }
   message: string
 }
 interface PendingChoice {
@@ -16,6 +17,12 @@ interface PendingChoice {
   firstName: string
   lastName: string
   plans: { id: string; plan: { id: string; name: string; category?: string | null } }[]
+}
+interface PendingCoachChoice {
+  coachId: string
+  firstName: string
+  lastName: string
+  classes: { id: string; name: string }[]
 }
 
 export default function QRScannerPage() {
@@ -33,6 +40,8 @@ export default function QRScannerPage() {
   const [todayCount, setTodayCount]     = useState(0)
   const [recentScans, setRecentScans]   = useState<{ name: string; time: string; ok: boolean }[]>([])
   const [pendingChoice, setPendingChoice] = useState<PendingChoice | null>(null)
+  const [pendingCoachChoice, setPendingCoachChoice] = useState<PendingCoachChoice | null>(null)
+  const [coachProcessing, setCoachProcessing] = useState(false)
 
   // Load today count
   useEffect(() => {
@@ -142,7 +151,67 @@ export default function QRScannerPage() {
     }
   }
 
+  async function completeCoachCheckIn(coachId: string, classId?: string) {
+    setCoachProcessing(true)
+    try {
+      const res = await fetch('/api/coach-attendance', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coachId, classId, status: 'ATTENDED', method: 'QR' }),
+      })
+      const data = await res.json()
+      if (res.ok) {
+        setResult({ ok: true, coach: { firstName: pendingCoachChoice?.firstName || '', lastName: pendingCoachChoice?.lastName || '', className: data.class?.name }, message: 'Coach checked in!' })
+        setRecentScans(prev => [{ name: `${pendingCoachChoice?.firstName} ${pendingCoachChoice?.lastName} (coach)`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), ok: true }, ...prev].slice(0, 8))
+      } else {
+        setResult({ ok: false, message: data.error || 'Coach check-in failed' })
+      }
+      setTimeout(() => setResult(null), 3500)
+    } catch {
+      setResult({ ok: false, message: 'Network error — check connection' })
+      setTimeout(() => setResult(null), 3000)
+    } finally {
+      setCoachProcessing(false)
+      setPendingCoachChoice(null)
+    }
+  }
+
   const processQR = useCallback(async (raw: string) => {
+    if (raw.startsWith('vance:coach:')) {
+      const coachId = raw.replace('vance:coach:', '').trim()
+      if (!coachId || coachProcessing || pendingCoachChoice) return
+      setCoachProcessing(true)
+      try {
+        const res = await fetch('/api/coach-attendance', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ coachId, status: 'ATTENDED', method: 'QR' }),
+        })
+        const data = await res.json()
+        if (res.status === 409 && data.error === 'MULTIPLE_CLASSES') {
+          // fetch the coach's name for display
+          const roster = await fetch('/api/coach-attendance').then(r => r.ok ? r.json() : [])
+          const me = Array.isArray(roster) ? roster.find((c: any) => c.coachId === coachId) : null
+          setCoachProcessing(false)
+          setPendingCoachChoice({ coachId, firstName: me?.firstName || 'Coach', lastName: me?.lastName || '', classes: data.classes || [] })
+          return
+        }
+        if (res.ok) {
+          const roster = await fetch('/api/coach-attendance').then(r => r.ok ? r.json() : [])
+          const me = Array.isArray(roster) ? roster.find((c: any) => c.coachId === coachId) : null
+          setResult({ ok: true, coach: { firstName: me?.firstName || 'Coach', lastName: me?.lastName || '', className: data.class?.name }, message: 'Coach checked in!' })
+          setRecentScans(prev => [{ name: `${me?.firstName || 'Coach'} ${me?.lastName || ''} (coach)`, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), ok: true }, ...prev].slice(0, 8))
+        } else {
+          setResult({ ok: false, message: data.error || 'Coach check-in failed' })
+        }
+        setTimeout(() => setResult(null), 3500)
+      } catch {
+        setResult({ ok: false, message: 'Network error — check connection' })
+        setTimeout(() => setResult(null), 3000)
+      } finally {
+        setCoachProcessing(false)
+      }
+      return
+    }
+
     // Expected format: vance:checkin:{memberId}
     if (!raw.startsWith('vance:checkin:')) return
     const memberId = raw.replace('vance:checkin:', '').trim()
@@ -186,7 +255,7 @@ export default function QRScannerPage() {
     } finally {
       setProcessing(false)
     }
-  }, [processing, pendingChoice]) // eslint-disable-line
+  }, [processing, pendingChoice, coachProcessing, pendingCoachChoice]) // eslint-disable-line
 
   return (
     <div className="min-h-screen bg-dark-950 flex flex-col">
@@ -284,6 +353,32 @@ export default function QRScannerPage() {
                 )}
               </AnimatePresence>
 
+              {/* Coach: which class picker — coach teaches more than one class scheduled today */}
+              <AnimatePresence>
+                {pendingCoachChoice && (
+                  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                    className="absolute inset-0 flex items-center justify-center bg-dark-950/90 backdrop-blur-sm p-6">
+                    <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="w-full max-w-sm">
+                      <div className="w-14 h-14 rounded-full bg-crimson-400/20 border-2 border-crimson-400 flex items-center justify-center font-bold text-crimson-400 text-lg mx-auto mb-3">
+                        {getInitials(`${pendingCoachChoice.firstName} ${pendingCoachChoice.lastName}`)}
+                      </div>
+                      <p className="text-white font-display text-2xl tracking-wider text-center mb-1">{pendingCoachChoice.firstName.toUpperCase()} <span className="text-crimson-400 text-base">(COACH)</span></p>
+                      <p className="text-dark-300 text-sm text-center mb-4">Teaches more than one class today — which one is this?</p>
+                      <div className="space-y-2">
+                        {pendingCoachChoice.classes.map(c => (
+                          <button key={c.id} onClick={() => completeCoachCheckIn(pendingCoachChoice.coachId, c.id)} disabled={coachProcessing}
+                            className="w-full flex items-center justify-between p-3 rounded-xl bg-dark-800 border border-dark-600 hover:border-crimson-400/50 transition-all text-left">
+                            <div className="text-white text-sm font-medium">{c.name}</div>
+                            <Zap size={14} className="text-crimson-400" />
+                          </button>
+                        ))}
+                      </div>
+                      <button onClick={() => setPendingCoachChoice(null)} className="w-full text-center text-dark-500 text-xs mt-4 hover:text-dark-300">Cancel</button>
+                    </motion.div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
               {/* Result overlay */}
               <AnimatePresence>
                 {result && (
@@ -313,6 +408,17 @@ export default function QRScannerPage() {
                             {result.member.firstName.toUpperCase()}
                           </p>
                           <p className="text-primary-400 text-sm mb-3">{result.member.enrollments?.[0]?.class?.name || 'Fighter'}</p>
+                        </>
+                      )}
+                      {result.coach && (
+                        <>
+                          <div className="w-16 h-16 rounded-full bg-crimson-400/20 border-2 border-crimson-400 flex items-center justify-center font-bold text-crimson-400 text-xl mx-auto mb-3">
+                            {getInitials(`${result.coach.firstName} ${result.coach.lastName}`)}
+                          </div>
+                          <p className="text-white font-display text-3xl tracking-wider mb-1">
+                            {result.coach.firstName.toUpperCase()} <span className="text-crimson-400 text-lg">(COACH)</span>
+                          </p>
+                          <p className="text-crimson-400 text-sm mb-3">{result.coach.className || ''}</p>
                         </>
                       )}
                       <p className={`font-bold text-xl ${result.ok ? 'text-primary-400' : 'text-red-400'}`}>

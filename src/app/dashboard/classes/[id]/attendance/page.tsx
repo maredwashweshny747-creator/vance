@@ -30,6 +30,8 @@ export default function ClassAttendancePage() {
   const [date, setDate] = useState(toDateInput(new Date()))
   const [cls, setCls] = useState<any>(null)
   const [roster, setRoster] = useState<RosterEntry[]>([])
+  const [coachInfo, setCoachInfo] = useState<{ coach: any; assigned: number; attended: number; missed: number } | null>(null)
+  const [markingCoach, setMarkingCoach] = useState(false)
   const [loading, setLoading] = useState(true)
   const [excuseTarget, setExcuseTarget] = useState<RosterEntry | null>(null)
   const [excuseReason, setExcuseReason] = useState('')
@@ -40,6 +42,14 @@ export default function ClassAttendancePage() {
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) { setCls(d.class); setRoster(d.roster) } setLoading(false) })
       .catch(() => setLoading(false))
+    fetch(`/api/coach-attendance?classId=${classId}`).then(r => r.ok ? r.json() : null).then(d => { if (d) setCoachInfo(d) }).catch(() => {})
+  }
+
+  async function markCoach(status: string) {
+    setMarkingCoach(true)
+    const res = await fetch('/api/coach-attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coachId: coachInfo?.coach.id, classId, date, status, method: 'MANUAL' }) })
+    setMarkingCoach(false)
+    if (res.ok) { toast.success(`Coach marked ${status.toLowerCase()}`); load() } else toast.error('Failed to save')
   }
 
   useEffect(() => { if (classId) load() }, [classId, date]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -85,6 +95,33 @@ export default function ClassAttendancePage() {
         <h1 className="font-display text-4xl tracking-wider text-white">{cls?.name?.toUpperCase() || 'ATTENDANCE'}</h1>
         <p className="text-dark-300 text-sm mt-1">{cls ? disciplineLabel(cls.category) : ''} · {roster.length} fighter{roster.length !== 1 ? 's' : ''} signed in</p>
       </div>
+
+      {/* Coach attendance for this class */}
+      {coachInfo?.coach && (
+        <div className="card">
+          <h2 className="text-white font-semibold text-sm mb-3">Coach</h2>
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-full bg-dark-700 border border-dark-600 flex items-center justify-center text-xs font-bold text-crimson-400 flex-shrink-0">
+              {getInitials(`${coachInfo.coach.firstName} ${coachInfo.coach.lastName}`)}
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-white text-sm font-medium">{coachInfo.coach.firstName} {coachInfo.coach.lastName}</div>
+              <div className="text-dark-500 text-xs">{coachInfo.attended} attended · {coachInfo.missed} missed this month ({coachInfo.assigned} assigned)</div>
+            </div>
+            {(() => {
+              const todaysMark = (coachInfo as any).marks?.find((m: any) => toDateInput(new Date(m.date)) === date)
+              return todaysMark ? (
+                <span className={cn('badge text-xs flex-shrink-0', todaysMark.status === 'ATTENDED' ? 'text-primary-400 bg-primary-400/10 border-primary-400/20' : 'text-crimson-400 bg-crimson-400/10 border-crimson-400/20')}>{todaysMark.status}</span>
+              ) : (
+                <div className="flex gap-1.5 flex-shrink-0">
+                  <button onClick={() => markCoach('ATTENDED')} disabled={markingCoach} className="px-2.5 py-1.5 rounded-lg bg-primary-400/10 border border-primary-400/20 text-primary-400 text-xs hover:bg-primary-400/20">Attended</button>
+                  <button onClick={() => markCoach('ABSENT')} disabled={markingCoach} className="px-2.5 py-1.5 rounded-lg bg-crimson-500/10 border border-crimson-500/20 text-crimson-400 text-xs hover:bg-crimson-500/20">Absent</button>
+                </div>
+              )
+            })()}
+          </div>
+        </div>
+      )}
 
       {/* Date navigator */}
       <div className="flex items-center justify-between bg-dark-800 border border-dark-600 rounded-2xl p-4">

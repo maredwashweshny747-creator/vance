@@ -2,21 +2,26 @@
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { motion } from 'framer-motion'
-import { Users, DollarSign, Calendar, UserCheck, ArrowUpRight, ArrowDownRight, TrendingUp, AlertCircle, Activity, Swords, Hourglass, Clock, CheckCircle2 } from 'lucide-react'
+import { Users, DollarSign, Calendar, UserCheck, ArrowUpRight, ArrowDownRight, TrendingUp, AlertCircle, Activity, Swords, Hourglass, Clock, CheckCircle2, QrCode, X } from 'lucide-react'
 import { formatCurrency, cn, DAY_LABELS } from '@/lib/utils'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 
 function CoachDashboard({ name }: { name: string }) {
   const [classes, setClasses] = useState<any[]>([])
+  const [coachId, setCoachId] = useState('')
   const [sessionRate, setSessionRate] = useState(0)
   const [sessionsThisMonth, setSessionsThisMonth] = useState(0)
-  const [checkedIn, setCheckedIn] = useState(false)
-  const [checkingIn, setCheckingIn] = useState(false)
+  const [todaysClasses, setTodaysClasses] = useState<{ id: string; name: string; checkedIn: boolean }[]>([])
+  const [showQr, setShowQr] = useState(false)
+  const [checkingIn, setCheckingIn] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
-  function loadAttendance() {
-    fetch('/api/coach-attendance?mine=true').then(r => r.ok ? r.json() : null).then(d => { if (d) setCheckedIn(!!d.checkedIn) }).catch(() => {})
+  function loadAttendance(myCoachId: string) {
+    fetch('/api/coach-attendance').then(r => r.ok ? r.json() : []).then((rows: any[]) => {
+      const mine = rows.find(r => r.coachId === myCoachId)
+      if (mine) setTodaysClasses(mine.todaysClasses || [])
+    }).catch(() => {})
   }
 
   useEffect(() => {
@@ -27,16 +32,16 @@ function CoachDashboard({ name }: { name: string }) {
       setClasses(Array.isArray(cls) ? cls : [])
       setSessionRate(mine?.sessionRate || 0)
       setSessionsThisMonth(mine?.sessionsThisMonth || 0)
+      if (mine?.id) { setCoachId(mine.id); loadAttendance(mine.id) }
       setLoading(false)
     }).catch(() => setLoading(false))
-    loadAttendance()
   }, [])
 
-  async function checkIn() {
-    setCheckingIn(true)
-    const res = await fetch('/api/coach-attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
-    setCheckingIn(false)
-    if (res.ok) { toast.success("You're checked in for today!"); setCheckedIn(true) }
+  async function checkInClass(classId: string) {
+    setCheckingIn(classId)
+    const res = await fetch('/api/coach-attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ classId, status: 'ATTENDED' }) })
+    setCheckingIn(null)
+    if (res.ok) { toast.success('Checked in!'); loadAttendance(coachId) }
     else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to check in') }
   }
 
@@ -59,12 +64,39 @@ function CoachDashboard({ name }: { name: string }) {
           <h1 className="font-display text-4xl tracking-wider text-white">WELCOME, {name.split(' ')[0]?.toUpperCase()}</h1>
           <p className="text-dark-300 text-sm mt-1">Your classes, private sessions, and earnings at a glance</p>
         </div>
-        <button onClick={checkIn} disabled={checkedIn || checkingIn}
-          className={cn('flex items-center gap-2 font-bold px-5 py-2.5 rounded-xl text-sm transition-all active:scale-95',
-            checkedIn ? 'bg-primary-400/10 border border-primary-400/30 text-primary-400 cursor-default' : 'bg-primary-400 hover:bg-primary-300 text-dark-950')}>
-          <CheckCircle2 size={16}/> {checkedIn ? "You're checked in today" : checkingIn ? 'Checking in…' : 'Check In for Today'}
+        <button onClick={() => setShowQr(s => !s)}
+          className="flex items-center gap-2 bg-primary-400 hover:bg-primary-300 text-dark-950 font-bold px-5 py-2.5 rounded-xl text-sm transition-all active:scale-95">
+          <QrCode size={16}/> {showQr ? 'Hide My QR' : 'Show My QR'}
         </button>
       </div>
+
+      {showQr && coachId && (
+        <div className="card flex flex-col items-center gap-2 py-6">
+          <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent('vance:coach:' + coachId)}&bgcolor=ffffff&color=000000`} alt="Coach check-in QR code" className="rounded-lg" />
+          <p className="text-dark-400 text-xs">Show this at the front desk to check in for today&apos;s class</p>
+        </div>
+      )}
+
+      {todaysClasses.length > 0 && (
+        <div className="card">
+          <h2 className="font-semibold text-white text-sm mb-3">Today&apos;s Classes</h2>
+          <div className="space-y-2">
+            {todaysClasses.map(c => (
+              <div key={c.id} className="flex items-center gap-3 py-2 border-b border-dark-700 last:border-0">
+                <span className="text-white text-sm flex-1">{c.name}</span>
+                {c.checkedIn ? (
+                  <span className="flex items-center gap-1 text-primary-400 text-xs"><CheckCircle2 size={14}/> Checked in</span>
+                ) : (
+                  <button onClick={() => checkInClass(c.id)} disabled={checkingIn === c.id}
+                    className="px-3 py-1.5 bg-primary-400/10 border border-primary-400/20 text-primary-400 text-xs rounded-lg hover:bg-primary-400/20 transition-colors disabled:opacity-50">
+                    {checkingIn === c.id ? 'Checking in…' : 'Check In'}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">{[...Array(4)].map((_,i) => <div key={i} className="h-28 rounded-2xl skeleton"/>)}</div>

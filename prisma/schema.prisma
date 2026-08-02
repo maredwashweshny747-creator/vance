@@ -153,17 +153,24 @@ model Coach {
 
 // Tracks when a coach actually showed up (separate from a class's fighter roster —
 // this is "did the coach clock in", useful for accountability/payroll cross-checks).
+// Did the coach show up to teach a specific class on a specific date — separate
+// from a fighter's ClassAttendance, but the same "one row per date" shape.
+// Lets a receptionist see, per class, how many of a coach's assigned sessions
+// they actually attended vs missed. Also created by scanning the coach's QR.
 model CoachAttendance {
-  id        String   @id @default(cuid())
-  coachId   String
-  date      DateTime // calendar date of the shift
-  checkedIn DateTime @default(now())
-  method    String   @default("MANUAL") // MANUAL, QR
+  id         String   @id @default(cuid())
+  coachId    String
+  classId    String
+  date       DateTime // calendar date of the session
+  status     String   @default("ATTENDED") // ATTENDED, ABSENT
+  method     String   @default("MANUAL")   // MANUAL, QR, ROSTER
   markedById String?
+  markedAt   DateTime @default(now())
 
-  coach Coach @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  coach Coach    @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  class GymClass @relation(fields: [classId], references: [id], onDelete: Cascade)
 
-  @@unique([coachId, date])
+  @@unique([coachId, classId, date])
 }
 
 // A class IS the subscribable plan: "Kickboxing Adults" meets Mon/Wed/Sat,
@@ -200,6 +207,7 @@ model GymClass {
   bookings ClassBooking[]
   enrollments ClassEnrollment[]
   attendance  ClassAttendance[]
+  coachAttendance CoachAttendance[]
 }
 
 // One fighter's subscription to one class. A fighter training MMA + Kickboxing has two of these.
