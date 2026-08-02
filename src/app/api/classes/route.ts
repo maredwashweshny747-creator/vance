@@ -19,7 +19,17 @@ export async function GET() {
     include: { coach: true, _count: { select: { enrollments: { where: { status: { in: ['ACTIVE', 'FROZEN'] } } } } } },
     orderBy: { createdAt: 'desc' },
   })
-  return NextResponse.json(classes)
+
+  // Total revenue per class = sum of all completed payments recorded against it
+  // (discounts are already baked into Payment.amount, so this reflects real revenue).
+  const revenueByClass = await prisma.payment.groupBy({
+    by: ['classId'],
+    where: { gymId: gym.id, status: 'COMPLETED', classId: { in: classes.map(c => c.id) } },
+    _sum: { amount: true },
+  })
+  const revenueMap = new Map(revenueByClass.map(r => [r.classId, r._sum.amount || 0]))
+
+  return NextResponse.json(classes.map(c => ({ ...c, totalRevenue: revenueMap.get(c.id) || 0 })))
 }
 
 export async function POST(req: NextRequest) {
@@ -29,8 +39,13 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     if (!body.name) return NextResponse.json({ error: 'Class name is required' }, { status: 400 })
-    const isOneTime = !!body.isOneTime
-    if (isOneTime) {
+    const isPrivate = body.type === 'PRIVATE'
+    const isOneTime = !isPrivate && !!body.isOneTime
+    // Private sessions are session-count based (Coach + Price Per Session), not scheduled
+    // by day of week — skip the weekly-schedule / one-time-date requirements for them.
+    if (isPrivate) {
+      if (!body.coachId) return NextResponse.json({ error: 'Pick a coach for the private session' }, { status: 400 })
+    } else if (isOneTime) {
       if (!body.sessionDate) return NextResponse.json({ error: 'Pick a date for the session' }, { status: 400 })
     } else if (!Array.isArray(body.daysOfWeek) || body.daysOfWeek.length === 0) {
       return NextResponse.json({ error: 'Pick at least one day of the week' }, { status: 400 })
@@ -52,15 +67,15 @@ export async function POST(req: NextRequest) {
         name:        body.name,
         description: body.description || null,
         category:    body.category    || null,
-        type:        body.type === 'PRIVATE' ? 'PRIVATE' : 'GROUP',
+        type:        isPrivate ? 'PRIVATE' : 'GROUP',
         isOneTime,
-        daysOfWeek:  isOneTime ? [] : body.daysOfWeek,
+        daysOfWeek:  isPrivate || isOneTime ? [] : body.daysOfWeek,
         sessionDate: isOneTime ? new Date(body.sessionDate) : null,
         startTimeOfDay: body.startTimeOfDay || '18:00',
         duration:    Number(body.duration)  || 60,
         capacity:    Number(body.capacity)  || 20,
-        price:       Number(body.price)     || 0,
-        durationDays: isOneTime ? 1 : (Number(body.durationDays) || 30),
+        price:       Number(body.price)     || 0, // for PRIVATE this is the price PER SESSION
+        durationDays: isPrivate ? 3650 : isOneTime ? 1 : (Number(body.durationDays) || 30),
         color:       body.color       || '#ffc700',
         location:    body.location    || null,
         coachId,

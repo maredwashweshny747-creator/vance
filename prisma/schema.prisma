@@ -208,6 +208,7 @@ model GymClass {
   enrollments ClassEnrollment[]
   attendance  ClassAttendance[]
   coachAttendance CoachAttendance[]
+  payments    Payment[]
 }
 
 // One fighter's subscription to one class. A fighter training MMA + Kickboxing has two of these.
@@ -224,12 +225,14 @@ model ClassEnrollment {
   lastAction      String?   // CREATED, RENEWED, FROZEN, UNFROZEN, CANCELED, EXPIRED
   lastActionById  String?   // who performed the most recent action
   lastActionAt    DateTime?
+  sessionCount    Int?      // for PRIVATE (session-based) classes: total sessions purchased this cycle
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   member Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
   class  GymClass  @relation(fields: [classId], references: [id])
   attendance ClassAttendance[]
+  payments   Payment[]
 }
 
 // One fighter's mark (attended / absent / excused) for one class on one date —
@@ -270,7 +273,13 @@ model Payment {
   id          String   @id @default(cuid())
   gymId       String
   memberId    String?
+  classId     String?  // which class/subscription this payment is for (used for per-class revenue)
+  enrollmentId String? // the specific enrollment this payment belongs to — deleting the
+                        // enrollment (fighter removed from class) cascades and removes this row
   amount      Float
+  originalAmount Float? // amount before any discount was applied
+  discountType   String? @default("NONE") // NONE, PERCENTAGE, FIXED
+  discountValue  Float?  @default(0)
   currency    String   @default("EGP")
   type        String   // MEMBERSHIP, CLASS, PERSONAL_TRAINING, PRODUCT
   status      String   @default("PENDING") // PENDING, COMPLETED, FAILED, REFUNDED
@@ -285,9 +294,11 @@ model Payment {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  gym    Gym     @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  member Member? @relation(fields: [memberId], references: [id])
-  branch Branch? @relation(fields: [branchId], references: [id])
+  gym        Gym              @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  member     Member?          @relation(fields: [memberId], references: [id])
+  branch     Branch?          @relation(fields: [branchId], references: [id])
+  class      GymClass?        @relation(fields: [classId], references: [id], onDelete: SetNull)
+  enrollment ClassEnrollment? @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
 }
 
 model Announcement {

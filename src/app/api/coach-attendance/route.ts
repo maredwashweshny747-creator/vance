@@ -62,19 +62,22 @@ export async function GET(req: NextRequest) {
 
 // POST — mark a coach's attendance for a class. If classId is omitted (QR scan),
 // resolve it from classes scheduled for the coach today.
+// Coach attendance may only be recorded by an Admin or Receptionist — from the
+// receptionist/admin dashboard (manual check-in or QR/barcode scan). A coach can
+// never check themselves in, including from their own dashboard/QR.
 export async function POST(req: NextRequest) {
   const result = await getSessionAndGym()
   if ('error' in result) return result.error
   const { gym, user } = result
+
+  if (user.role !== 'ADMIN' && user.role !== 'RECEPTIONIST') {
+    return NextResponse.json({ error: 'Only reception or admin can record coach attendance. Coaches cannot check themselves in.' }, { status: 403 })
+  }
+
   const body = await req.json()
   let { coachId, classId, status, method } = body
   const date = body.date ? startOfDay(new Date(body.date)) : startOfDay(new Date())
 
-  if (!coachId && user.role === 'COACH') {
-    const coach = await prisma.coach.findFirst({ where: { gymId: gym.id, userId: user.id } })
-    if (!coach) return NextResponse.json({ error: 'Coach profile not found' }, { status: 404 })
-    coachId = coach.id
-  }
   if (!coachId) return NextResponse.json({ error: 'coachId required' }, { status: 400 })
 
   const coach = await prisma.coach.findFirst({ where: { id: coachId, gymId: gym.id }, include: { classes: { where: { status: 'APPROVED' } } } })
@@ -87,6 +90,13 @@ export async function POST(req: NextRequest) {
     classId = scheduledToday[0].id
   } else if (!coach.classes.some(c => c.id === classId)) {
     return NextResponse.json({ error: 'That class is not assigned to this coach' }, { status: 400 })
+  }
+
+  // At most one attendance record per class/session: if already marked ATTENDED,
+  // refuse rather than silently overwriting/duplicating.
+  const existing = await prisma.coachAttendance.findUnique({ where: { coachId_classId_date: { coachId, classId, date } } })
+  if (existing && existing.status === 'ATTENDED') {
+    return NextResponse.json({ error: 'This coach is already marked attended for this session' }, { status: 409 })
   }
 
   const mark = await prisma.coachAttendance.upsert({

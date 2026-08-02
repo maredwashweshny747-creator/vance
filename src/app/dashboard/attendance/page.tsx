@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useSession } from 'next-auth/react'
 import { UserCheck, Search, Users, TrendingUp, AlertCircle, Clock, CheckCircle2, Zap, QrCode, X } from 'lucide-react'
 import Link from 'next/link'
 import { getInitials, formatDateTime, cn } from '@/lib/utils'
@@ -19,6 +20,8 @@ interface CoachRow {
 }
 
 export default function AttendancePage() {
+  const { data: session } = useSession()
+  const canCheckInCoaches = ['ADMIN', 'RECEPTIONIST'].includes((session?.user as any)?.role)
   const [stats, setStats] = useState<Stats | null>(null)
   const [members, setMembers] = useState<Member[]>([])
   const [coaches, setCoaches] = useState<CoachRow[]>([])
@@ -216,8 +219,10 @@ export default function AttendancePage() {
                         <span className="text-dark-300 truncate flex-1">{cls.name}</span>
                         {cls.checkedIn ? (
                           <CheckCircle2 size={14} className="text-primary-400 flex-shrink-0"/>
-                        ) : (
+                        ) : canCheckInCoaches ? (
                           <button onClick={() => checkInCoach(c.coachId, cls.id)} className="flex-shrink-0 px-2 py-1 bg-primary-400/10 border border-primary-400/20 text-primary-400 rounded-md hover:bg-primary-400/20 transition-colors">Check In</button>
+                        ) : (
+                          <span className="text-dark-500 flex-shrink-0">Not checked in</span>
                         )}
                       </div>
                     ))}

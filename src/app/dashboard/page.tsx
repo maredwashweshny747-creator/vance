@@ -14,7 +14,6 @@ function CoachDashboard({ name }: { name: string }) {
   const [sessionsThisMonth, setSessionsThisMonth] = useState(0)
   const [todaysClasses, setTodaysClasses] = useState<{ id: string; name: string; checkedIn: boolean }[]>([])
   const [showQr, setShowQr] = useState(false)
-  const [checkingIn, setCheckingIn] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   function loadAttendance(myCoachId: string) {
@@ -36,14 +35,6 @@ function CoachDashboard({ name }: { name: string }) {
       setLoading(false)
     }).catch(() => setLoading(false))
   }, [])
-
-  async function checkInClass(classId: string) {
-    setCheckingIn(classId)
-    const res = await fetch('/api/coach-attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ classId, status: 'ATTENDED' }) })
-    setCheckingIn(null)
-    if (res.ok) { toast.success('Checked in!'); loadAttendance(coachId) }
-    else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to check in') }
-  }
 
   const pending = classes.filter(c => c.status === 'PENDING')
   // A class is "on this week" if it's a one-time session in the next 7 days, or a
@@ -80,6 +71,7 @@ function CoachDashboard({ name }: { name: string }) {
       {todaysClasses.length > 0 && (
         <div className="card">
           <h2 className="font-semibold text-white text-sm mb-3">Today&apos;s Classes</h2>
+          <p className="text-dark-500 text-xs mb-3">Show your QR to reception or admin to be checked in — coaches can&apos;t check themselves in.</p>
           <div className="space-y-2">
             {todaysClasses.map(c => (
               <div key={c.id} className="flex items-center gap-3 py-2 border-b border-dark-700 last:border-0">
@@ -87,10 +79,7 @@ function CoachDashboard({ name }: { name: string }) {
                 {c.checkedIn ? (
                   <span className="flex items-center gap-1 text-primary-400 text-xs"><CheckCircle2 size={14}/> Checked in</span>
                 ) : (
-                  <button onClick={() => checkInClass(c.id)} disabled={checkingIn === c.id}
-                    className="px-3 py-1.5 bg-primary-400/10 border border-primary-400/20 text-primary-400 text-xs rounded-lg hover:bg-primary-400/20 transition-colors disabled:opacity-50">
-                    {checkingIn === c.id ? 'Checking in…' : 'Check In'}
-                  </button>
+                  <span className="text-dark-500 text-xs">Awaiting check-in</span>
                 )}
               </div>
             ))}

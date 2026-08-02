@@ -16,6 +16,14 @@ async function countSessions(gymId: string, coachId: string, month: number, year
   })
 }
 
+// Total fighter attendance records ever logged against classes this coach teaches
+// (not scoped to a month — a running lifetime total, computed live).
+async function countPlayersAttended(gymId: string, coachId: string) {
+  return prisma.classAttendance.count({
+    where: { class: { gymId, coachId } },
+  })
+}
+
 export async function GET(req: NextRequest) {
   const result = await getSessionAndGym()
   if ('error' in result) return result.error
@@ -48,6 +56,7 @@ export async function GET(req: NextRequest) {
 
     const rows = await Promise.all(coaches.map(async coach => {
       const liveSessionCount = await countSessions(gym.id, coach.id, month, year)
+      const totalPlayersAttended = await countPlayersAttended(gym.id, coach.id)
       const run = existingRuns.find(r => r.coachId === coach.id)
       return {
         coachId: coach.id,
@@ -56,6 +65,7 @@ export async function GET(req: NextRequest) {
         sessionRate: coach.sessionRate,
         sessionCount: run ? run.sessionCount : liveSessionCount,
         liveSessionCount,
+        totalPlayersAttended,
         runId: run?.id || null,
         bonus: run?.bonus || 0,
         deductions: run?.deductions || 0,

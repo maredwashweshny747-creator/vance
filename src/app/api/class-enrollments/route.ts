@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionAndGym } from '@/lib/getGym'
 import { sessionsAllowedForCycle } from '@/lib/utils'
+import { baseAmountForClass, applyDiscount } from '@/lib/payment'
 
 function calcEndDate(start: Date, durationDays: number): Date {
   const d = new Date(start)
@@ -9,7 +10,10 @@ function calcEndDate(start: Date, durationDays: number): Date {
   return d
 }
 
-// POST: sign a fighter into a class (their initial enrollment, or an additional discipline)
+// POST: sign a fighter into a class (their initial enrollment, or an additional discipline).
+// For PRIVATE (session-based) classes, body.sessionCount is the number of sessions purchased
+// and the amount is pricePerSession * sessionCount. body.discountType/discountValue optionally
+// apply a discount (No Discount / Percentage / Fixed Amount) before the payment is saved.
 export async function POST(req: NextRequest) {
   const result = await getSessionAndGym()
   if ('error' in result) return result.error
@@ -26,20 +30,25 @@ export async function POST(req: NextRequest) {
 
     const startDate = body.startDate ? new Date(body.startDate) : new Date()
     const endDate = calcEndDate(startDate, cls.durationDays)
+    const sessionCount = cls.type === 'PRIVATE' ? Math.max(1, Number(body.sessionCount) || 1) : null
 
     const enrollment = await prisma.classEnrollment.create({
       data: {
-        memberId: member.id, classId: cls.id, status: 'ACTIVE', startDate, endDate,
+        memberId: member.id, classId: cls.id, status: 'ACTIVE', startDate, endDate, sessionCount,
         addedById: user.id, lastAction: 'CREATED', lastActionById: user.id, lastActionAt: new Date(),
       },
       include: { class: true },
     })
 
+    const base = baseAmountForClass(cls, sessionCount)
+    const { type: discountType, value: discountValue, originalAmount, amount } = applyDiscount(base, body.discountType, body.discountValue)
+
     await prisma.payment.create({
       data: {
-        gymId: gym.id, memberId: member.id, amount: cls.price, currency: gym.currency || 'EGP',
+        gymId: gym.id, memberId: member.id, classId: cls.id, enrollmentId: enrollment.id,
+        amount, originalAmount, discountType, discountValue, currency: gym.currency || 'EGP',
         type: 'MEMBERSHIP', status: 'COMPLETED', method: body.paymentMethod || null, proofPhoto: body.proofPhoto || null,
-        description: `New enrollment — ${member.firstName} ${member.lastName} (${cls.name})`,
+        description: `New enrollment — ${member.firstName} ${member.lastName} (${cls.name}${sessionCount ? `, ${sessionCount} sessions` : ''})`,
         paidAt: new Date(),
       },
     })
@@ -100,21 +109,34 @@ export async function PATCH(req: NextRequest) {
     // exactly who performed it and when, regardless.
     const newStart = new Date()
     const newEnd = calcEndDate(newStart, enr.class.durationDays)
+    const sessionCount = enr.class.type === 'PRIVATE' ? Math.max(1, Number(body.sessionCount) || enr.sessionCount || 1) : null
+
     await prisma.classEnrollment.update({
       where: { id }, data: {
         status: 'ACTIVE', startDate: newStart, endDate: newEnd, freezeStartedAt: null, totalFreezeDaysLeft: 0,
+        sessionCount,
         lastAction: 'RENEWED', lastActionById: user.id, lastActionAt: new Date(),
       },
     })
+
+    // The Payments page should only hold the current active payment for this
+    // subscription — remove the previous one(s) tied to this enrollment before
+    // creating the new one, so renewals never leave stale payments behind.
+    await prisma.payment.deleteMany({ where: { enrollmentId: enr.id } })
+
+    const base = baseAmountForClass(enr.class, sessionCount)
+    const { type: discountType, value: discountValue, originalAmount, amount } = applyDiscount(base, body.discountType, body.discountValue)
+
     await prisma.payment.create({
       data: {
-        gymId: gym.id, memberId: enr.memberId, amount: enr.class.price, currency: gym.currency || 'EGP',
+        gymId: gym.id, memberId: enr.memberId, classId: enr.classId, enrollmentId: enr.id,
+        amount, originalAmount, discountType, discountValue, currency: gym.currency || 'EGP',
         type: 'MEMBERSHIP', status: 'COMPLETED', method: body.paymentMethod || null, proofPhoto: body.proofPhoto || null,
-        description: `Renewal — ${enr.member.firstName} ${enr.member.lastName} (${enr.class.name}), confirmed by ${user.name || user.email}`,
+        description: `Renewal — ${enr.member.firstName} ${enr.member.lastName} (${enr.class.name}${sessionCount ? `, ${sessionCount} sessions` : ''}), confirmed by ${user.name || user.email}`,
         paidAt: new Date(),
       },
     })
-    return NextResponse.json({ success: true, message: `Renewed until ${newEnd.toDateString()}`, amountCharged: enr.class.price, renewedBy: user.name })
+    return NextResponse.json({ success: true, message: `Renewed until ${newEnd.toDateString()}`, amountCharged: amount, renewedBy: user.name })
   }
 
   if (action === 'cancel') {
@@ -163,6 +185,9 @@ export async function DELETE(req: NextRequest) {
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
   const enr = await prisma.classEnrollment.findFirst({ where: { id, member: { gymId: gym.id } } })
   if (!enr) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  // Delete the payment(s) tied to this enrollment first so removing a fighter from a
+  // class never leaves an orphan payment on the Payments page.
+  await prisma.payment.deleteMany({ where: { enrollmentId: id } })
   await prisma.classEnrollment.delete({ where: { id } })
   return NextResponse.json({ success: true })
 }

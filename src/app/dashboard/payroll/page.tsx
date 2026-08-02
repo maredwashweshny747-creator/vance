@@ -7,7 +7,7 @@ import toast from 'react-hot-toast'
 
 interface Staff { id:string; firstName:string; lastName:string; email:string; role:string; salary:number; salaryType:string; isActive:boolean }
 interface PayrollRun { id:string; staffId:string; month:number; year:number; baseSalary:number; commission:number; bonus:number; deductions:number; total:number; status:string; paidAt?:string; notes?:string; staff:Staff }
-interface CoachRow { coachId:string; firstName:string; lastName:string; sessionRate:number; sessionCount:number; liveSessionCount:number; runId:string|null; bonus:number; deductions:number; total:number; status:string; paidAt?:string; notes?:string }
+interface CoachRow { coachId:string; firstName:string; lastName:string; sessionRate:number; sessionCount:number; liveSessionCount:number; totalPlayersAttended:number; runId:string|null; bonus:number; deductions:number; total:number; status:string; paidAt?:string; notes?:string }
 
 const ROLES = ['STAFF','MANAGER']
 const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
@@ -184,13 +184,13 @@ export default function PayrollPage() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="border-b border-dark-700"><tr>
-                  {['Coach','Rate / Session','Sessions','Total','Status','Actions'].map(h=>(
+                  {['Coach','Rate / Session','Sessions','Players Attended','Total','Status','Actions'].map(h=>(
                     <th key={h} className="text-left text-xs text-dark-400 font-medium px-4 py-3">{h}</th>
                   ))}
                 </tr></thead>
                 <tbody className="divide-y divide-dark-700">
-                  {loading ? [...Array(3)].map((_,i)=><tr key={i}><td colSpan={6}><div className="h-12 skeleton m-4 rounded"/></td></tr>)
-                  : coachRows.length===0 ? <tr><td colSpan={6} className="px-5 py-12 text-center text-dark-400">No coaches yet — add one from Settings → Team Access</td></tr>
+                  {loading ? [...Array(3)].map((_,i)=><tr key={i}><td colSpan={7}><div className="h-12 skeleton m-4 rounded"/></td></tr>)
+                  : coachRows.length===0 ? <tr><td colSpan={7} className="px-5 py-12 text-center text-dark-400">No coaches yet — add one from Settings → Team Access</td></tr>
                   : coachRows.map(row=>(
                     <tr key={row.coachId} className="hover:bg-dark-750 group transition-colors">
                       <td className="px-4 py-3 text-white text-sm font-medium">{row.firstName} {row.lastName}</td>
@@ -201,6 +201,7 @@ export default function PayrollPage() {
                           <span className="text-yellow-400 text-xs ml-1.5">({row.liveSessionCount} taught now — refresh to update)</span>
                         )}
                       </td>
+                      <td className="px-4 py-3 text-dark-300 text-sm">{row.totalPlayersAttended}</td>
                       <td className="px-4 py-3 text-white font-bold text-sm">{formatCurrency(row.total)}</td>
                       <td className="px-4 py-3">
                         <span className={cn('badge text-xs',

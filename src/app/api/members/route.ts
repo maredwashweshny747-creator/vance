@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getSessionAndGym } from '@/lib/getGym'
 import { checkAndExpireEnrollment, generateFighterId } from '@/lib/enrollment'
 import { sessionsAllowedForCycle } from '@/lib/utils'
+import { baseAmountForClass, applyDiscount } from '@/lib/payment'
 
 // Attaches {xName} to rows by resolving the plain-string user id fields.
 async function withUserNames<T extends Record<string, any>>(rows: T[], idFields: string[]) {
@@ -28,7 +29,8 @@ async function attachMonthSummaries(enrollments: any[]) {
       prisma.classAttendance.count({ where: { enrollmentId: e.id, date: { gte: monthStart }, status: 'EXCUSED' } }),
       prisma.classAttendance.count({ where: { enrollmentId: e.id, date: { gte: monthStart }, status: 'ABSENT' } }),
     ])
-    const sessionsAllowed = e.class?.isOneTime ? 1 : sessionsAllowedForCycle(e.class?.daysOfWeek?.length || 0, e.class?.durationDays || 30)
+    const sessionsAllowed = e.class?.type === 'PRIVATE' ? (e.sessionCount || 0)
+      : e.class?.isOneTime ? 1 : sessionsAllowedForCycle(e.class?.daysOfWeek?.length || 0, e.class?.durationDays || 30)
     const remaining = Math.max(0, sessionsAllowed - attended)
     return { ...e, monthSummary: { attended, excused, absent, remaining, sessionsAllowed } }
   }))
@@ -120,19 +122,24 @@ export async function POST(req: NextRequest) {
       if (!cls) return NextResponse.json({ error: 'Class not found' }, { status: 400 })
       const startDate = body.startDate ? new Date(body.startDate) : new Date()
       const endDate = new Date(startDate); endDate.setDate(endDate.getDate() + cls.durationDays)
+      const sessionCount = cls.type === 'PRIVATE' ? Math.max(1, Number(body.sessionCount) || 1) : null
 
-      await prisma.classEnrollment.create({
+      const enrollment = await prisma.classEnrollment.create({
         data: {
-          memberId: member.id, classId: cls.id, status: 'ACTIVE', startDate, endDate,
+          memberId: member.id, classId: cls.id, status: 'ACTIVE', startDate, endDate, sessionCount,
           addedById: user.id, lastAction: 'CREATED', lastActionById: user.id, lastActionAt: new Date(),
         },
       })
 
+      const base = baseAmountForClass(cls, sessionCount)
+      const { type: discountType, value: discountValue, originalAmount, amount } = applyDiscount(base, body.discountType, body.discountValue)
+
       await prisma.payment.create({
         data: {
-          gymId: gym.id, memberId: member.id, amount: cls.price, currency: gym.currency || 'EGP',
+          gymId: gym.id, memberId: member.id, classId: cls.id, enrollmentId: enrollment.id,
+          amount, originalAmount, discountType, discountValue, currency: gym.currency || 'EGP',
           type: 'MEMBERSHIP', status: 'COMPLETED', method: body.paymentMethod || null, proofPhoto: body.proofPhoto || null,
-          description: `New enrollment — ${member.firstName} ${member.lastName} (${cls.name})`,
+          description: `New enrollment — ${member.firstName} ${member.lastName} (${cls.name}${sessionCount ? `, ${sessionCount} sessions` : ''})`,
           paidAt: new Date(),
         },
       })

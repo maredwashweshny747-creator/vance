@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Calendar, Plus, Clock, Users, Swords, Trash2, X, AlertTriangle, Check, Ban, Hourglass, User as UserIcon, Pencil, ClipboardList, DollarSign } from 'lucide-react'
+import { Calendar, Plus, Clock, Users, Swords, Trash2, X, AlertTriangle, Check, Ban, Hourglass, User as UserIcon, Pencil, ClipboardList, DollarSign, TrendingUp } from 'lucide-react'
 import Link from 'next/link'
 import { formatCurrency, cn, DAYS_OF_WEEK, DAY_LABELS } from '@/lib/utils'
 import { DISCIPLINE_CATEGORIES, DISCIPLINE_SHORT } from '@/lib/categories'
@@ -71,8 +71,10 @@ export default function ClassesPage() {
 
   async function saveClass(e: React.FormEvent) {
     e.preventDefault()
-    if (!form.isOneTime && form.daysOfWeek.length === 0) { toast.error('Pick at least one day of the week'); return }
-    if (form.isOneTime && !form.sessionDate) { toast.error('Pick a date for the session'); return }
+    if (form.type === 'PRIVATE') {
+      if (!form.coachId) { toast.error('Pick a coach for the private session'); return }
+    } else if (!form.isOneTime && form.daysOfWeek.length === 0) { toast.error('Pick at least one day of the week'); return }
+    else if (form.isOneTime && !form.sessionDate) { toast.error('Pick a date for the session'); return }
     if (editTarget) {
       const res = await fetch(`/api/classes?id=${editTarget.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
       const data = await res.json().catch(() => ({}))
@@ -169,10 +171,10 @@ export default function ClassesPage() {
                 <div className="flex items-center gap-3 text-xs text-dark-300 flex-wrap">
                   <span className="flex items-center gap-1"><Clock size={12}/> {cls.startTimeOfDay} · {cls.duration}min</span>
                   <span className="flex items-center gap-1"><Users size={12}/> {cls._count?.enrollments ?? 0}/{cls.capacity}</span>
-                  <span className="flex items-center gap-1 text-primary-400"><DollarSign size={12}/> {formatCurrency(cls.price)}/{cls.durationDays}d</span>
+                  <span className="flex items-center gap-1 text-primary-400"><DollarSign size={12}/> {cls.type === 'PRIVATE' ? `${formatCurrency(cls.price)}/session` : `${formatCurrency(cls.price)}/${cls.durationDays}d`}</span>
                 </div>
                 <div className="mt-3 flex items-center justify-between">
-                  <span className="text-xs text-dark-500">{cls.branchId ? '' : ''}</span>
+                  <span className="text-xs text-dark-400 flex items-center gap-1"><TrendingUp size={12} className="text-primary-400"/> Total Revenue: <span className="text-primary-400 font-semibold">{formatCurrency(cls.totalRevenue || 0)}</span></span>
                   <span className={cn('badge text-xs', STATUS_COLORS[cls.status] || '')}>{cls.status}</span>
                 </div>
                 {cls.status === 'REJECTED' && cls.rejectionNote && (
@@ -245,6 +247,9 @@ export default function ClassesPage() {
                   </div>
                 </div>
 
+                {form.type === 'PRIVATE' ? (
+                  <p className="text-dark-500 text-xs -mt-2">Private sessions are sold as a bundle of sessions (Coach + Price Per Session) instead of a weekly schedule — the fighter picks how many sessions to buy when they enroll.</p>
+                ) : (
                 <div>
                   <label className="label">Schedule</label>
                   <div className="grid grid-cols-2 gap-2 mb-3">
@@ -280,22 +285,30 @@ export default function ClassesPage() {
                     </div>
                   )}
                 </div>
+                )}
 
+                {form.type !== 'PRIVATE' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><label className="label">Start Time</label><input type="time" value={form.startTimeOfDay} onChange={e => setForm(f=>({...f,startTimeOfDay:e.target.value}))} className="input"/></div>
+                    <div><label className="label">Duration (min)</label><input type="number" value={form.duration} onChange={e => setForm(f=>({...f,duration:+e.target.value}))} min={15} max={180} className="input"/></div>
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
-                  <div><label className="label">Start Time</label><input type="time" value={form.startTimeOfDay} onChange={e => setForm(f=>({...f,startTimeOfDay:e.target.value}))} className="input"/></div>
-                  <div><label className="label">Duration (min)</label><input type="number" value={form.duration} onChange={e => setForm(f=>({...f,duration:+e.target.value}))} min={15} max={180} className="input"/></div>
+                  {form.type !== 'PRIVATE' && (
+                    <div><label className="label">Capacity</label><input type="number" value={form.capacity} onChange={e => setForm(f=>({...f,capacity:+e.target.value}))} min={1} className="input"/></div>
+                  )}
+                  <div className={form.type === 'PRIVATE' ? 'col-span-2' : ''}>
+                    <label className="label">{form.type === 'PRIVATE' ? 'Price Per Session' : 'Price / cycle'}</label>
+                    <input type="number" value={form.price} onChange={e => setForm(f=>({...f,price:+e.target.value}))} min={0} step={0.01} className="input"/>
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div><label className="label">Capacity</label><input type="number" value={form.capacity} onChange={e => setForm(f=>({...f,capacity:+e.target.value}))} min={1} className="input"/></div>
-                  <div><label className="label">Price / cycle</label><input type="number" value={form.price} onChange={e => setForm(f=>({...f,price:+e.target.value}))} min={0} step={0.01} className="input"/></div>
-                </div>
-                {!form.isOneTime && (
+                {!form.isOneTime && form.type !== 'PRIVATE' && (
                   <div><label className="label">Billing cycle length (days)</label><input type="number" value={form.durationDays} onChange={e => setForm(f=>({...f,durationDays:+e.target.value}))} min={1} className="input"/></div>
                 )}
 
                 {!isCoach && (
-                  <div><label className="label">Coach (optional)</label>
-                    <select value={form.coachId} onChange={e => setForm(f=>({...f,coachId:e.target.value}))} className="input">
+                  <div><label className="label">{form.type === 'PRIVATE' ? 'Coach Name' : 'Coach (optional)'}</label>
+                    <select value={form.coachId} onChange={e => setForm(f=>({...f,coachId:e.target.value}))} required={form.type === 'PRIVATE'} className="input">
                       <option value="">Unassigned</option>
                       {coaches.map(c => <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>)}
                     </select>

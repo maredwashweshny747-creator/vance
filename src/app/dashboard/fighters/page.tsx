@@ -4,14 +4,14 @@ import { useSession } from 'next-auth/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Search, Plus, X, Trash2, Snowflake, RefreshCw, Ban, Camera,
-  MessageCircle, QrCode, AlertTriangle, ChevronRight, ArrowLeftRight, Pencil, Hourglass,
+  MessageCircle, QrCode, ChevronRight, ArrowLeftRight, Pencil, Hourglass,
   CheckCircle2, XCircle, MinusCircle, User as UserIcon,
 } from 'lucide-react'
 import { cn, formatDate, formatCurrency, membershipColors, getInitials, whatsappLink, DAY_LABELS } from '@/lib/utils'
 import { disciplineLabel } from '@/lib/categories'
 import toast from 'react-hot-toast'
 
-interface ClassInfo { id: string; name: string; category?: string | null; daysOfWeek: string[]; price: number; durationDays: number; status: string }
+interface ClassInfo { id: string; name: string; category?: string | null; daysOfWeek: string[]; price: number; durationDays: number; status: string; type?: string }
 interface MonthSummary { attended: number; excused: number; absent: number; remaining: number; sessionsAllowed: number }
 interface Enrollment {
   id: string; classId: string; class: ClassInfo; status: string
@@ -143,6 +143,60 @@ function PaymentMethodFields({ method, onMethod, proof, onProof }: { method: str
   )
 }
 
+// Discount step shown before a payment is created — for assigning a fighter to a
+// class or renewing a subscription. For PRIVATE (session-based) classes it also
+// collects how many sessions are being purchased, since price = perSession * sessions.
+function DiscountAndPricingStep({
+  cls, sessionCount, onSessionCount, discountType, onDiscountType, discountValue, onDiscountValue,
+}: {
+  cls: ClassInfo | null | undefined
+  sessionCount: number
+  onSessionCount: (n: number) => void
+  discountType: string
+  onDiscountType: (v: string) => void
+  discountValue: string
+  onDiscountValue: (v: string) => void
+}) {
+  if (!cls) return null
+  const isPrivate = cls.type === 'PRIVATE'
+  const base = isPrivate ? cls.price * Math.max(1, sessionCount || 1) : cls.price
+  const value = Number(discountValue) || 0
+  const discountAmount = discountType === 'PERCENTAGE' ? base * (Math.min(Math.max(value, 0), 100) / 100)
+    : discountType === 'FIXED' ? Math.max(value, 0) : 0
+  const total = Math.max(0, base - discountAmount)
+
+  return (
+    <div className="space-y-3 bg-dark-750 border border-dark-600 rounded-xl p-3">
+      {isPrivate && (
+        <div>
+          <label className="label">Number of Sessions</label>
+          <input type="number" min={1} value={sessionCount || 1} onChange={e => onSessionCount(Math.max(1, +e.target.value))} className="input" />
+          <p className="text-dark-500 text-xs mt-1">{formatCurrency(cls.price)}/session × {Math.max(1, sessionCount || 1)} = {formatCurrency(base)}</p>
+        </div>
+      )}
+      <div>
+        <label className="label">Discount</label>
+        <div className="grid grid-cols-3 gap-1.5">
+          {[['NONE','No Discount'],['PERCENTAGE','Percentage'],['FIXED','Fixed Amount']].map(([v,l]) => (
+            <button key={v} type="button" onClick={() => onDiscountType(v)}
+              className={cn('py-1.5 rounded-lg text-xs font-medium border transition-all', discountType === v ? 'bg-primary-400/10 border-primary-400/30 text-primary-400' : 'border-dark-600 text-dark-400')}>
+              {l}
+            </button>
+          ))}
+        </div>
+        {discountType !== 'NONE' && (
+          <input type="number" min={0} value={discountValue} onChange={e => onDiscountValue(e.target.value)} className="input mt-2"
+            placeholder={discountType === 'PERCENTAGE' ? 'Percentage %' : 'Discount amount'} />
+        )}
+      </div>
+      <div className="flex items-center justify-between text-sm pt-1 border-t border-dark-600">
+        <span className="text-dark-400">Total to charge</span>
+        <span className="text-primary-400 font-bold">{formatCurrency(total)}</span>
+      </div>
+    </div>
+  )
+}
+
 function fighterQrUrl(memberId: string) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent('vance:checkin:' + memberId)}&bgcolor=ffffff&color=000000`
 }
@@ -169,10 +223,18 @@ export default function FightersPage() {
   const [renewing, setRenewing] = useState(false)
   const [renewPaymentMethod, setRenewPaymentMethod] = useState('')
   const [renewProof, setRenewProof] = useState('')
+  const [renewSessionCount, setRenewSessionCount] = useState(1)
+  const [renewDiscountType, setRenewDiscountType] = useState('NONE')
+  const [renewDiscountValue, setRenewDiscountValue] = useState('')
+  const [addSessionCount, setAddSessionCount] = useState(1)
+  const [addDiscountType, setAddDiscountType] = useState('NONE')
+  const [addDiscountValue, setAddDiscountValue] = useState('')
+  const [addClassSessionCount, setAddClassSessionCount] = useState(1)
+  const [addClassDiscountType, setAddClassDiscountType] = useState('NONE')
+  const [addClassDiscountValue, setAddClassDiscountValue] = useState('')
   const [switchTarget, setSwitchTarget] = useState<Enrollment | null>(null)
   const [switchToClassId, setSwitchToClassId] = useState('')
   const [switching, setSwitching] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<Member | null>(null)
   const [qrOpenFor, setQrOpenFor] = useState<string | null>(null)
   const [whatsappTemplate, setWhatsappTemplate] = useState('')
   const [editingFighter, setEditingFighter] = useState(false)
@@ -235,11 +297,17 @@ export default function FightersPage() {
 
   async function addMember(e: React.FormEvent) {
     e.preventDefault()
-    const res = await fetch('/api/members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(addForm) })
+    const selectedClass = classes.find(c => c.id === addForm.classId)
+    const res = await fetch('/api/members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      ...addForm,
+      sessionCount: selectedClass?.type === 'PRIVATE' ? addSessionCount : undefined,
+      discountType: addDiscountType, discountValue: addDiscountValue,
+    }) })
     if (res.ok) {
       toast.success('Fighter added!')
       setShowAdd(false)
       setAddForm(f => ({ ...f, firstName: '', lastName: '', email: '', phone: '', photo: '', birthYear: '', paymentMethod: '', proofPhoto: '', notes: '', branchId: '' }))
+      setAddSessionCount(1); setAddDiscountType('NONE'); setAddDiscountValue('')
       loadList()
     } else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to add fighter') }
   }
@@ -247,9 +315,16 @@ export default function FightersPage() {
   async function addClassToMember(e: React.FormEvent) {
     e.preventDefault()
     if (!selected) return
-    const res = await fetch('/api/class-enrollments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ memberId: selected.id, ...addClassForm }) })
-    if (res.ok) { toast.success('Signed into class!'); setShowAddClass(false); refreshSelected(); loadList() }
-    else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to sign into class') }
+    const selectedClass = classes.find(c => c.id === addClassForm.classId)
+    const res = await fetch('/api/class-enrollments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      memberId: selected.id, ...addClassForm,
+      sessionCount: selectedClass?.type === 'PRIVATE' ? addClassSessionCount : undefined,
+      discountType: addClassDiscountType, discountValue: addClassDiscountValue,
+    }) })
+    if (res.ok) {
+      toast.success('Signed into class!'); setShowAddClass(false); refreshSelected(); loadList()
+      setAddClassSessionCount(1); setAddClassDiscountType('NONE'); setAddClassDiscountValue('')
+    } else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to sign into class') }
   }
 
   async function enrollmentAction(enrollmentId: string, action: string, label: string) {
@@ -262,11 +337,18 @@ export default function FightersPage() {
   async function confirmRenew() {
     if (!renewTarget) return
     setRenewing(true)
-    const res = await fetch(`/api/class-enrollments?id=${renewTarget.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _action: 'renew', paymentMethod: renewPaymentMethod, proofPhoto: renewProof }) })
+    const res = await fetch(`/api/class-enrollments?id=${renewTarget.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      _action: 'renew', paymentMethod: renewPaymentMethod, proofPhoto: renewProof,
+      sessionCount: renewTarget.class?.type === 'PRIVATE' ? renewSessionCount : undefined,
+      discountType: renewDiscountType, discountValue: renewDiscountValue,
+    }) })
     const data = await res.json().catch(() => ({}))
     setRenewing(false)
-    if (res.ok) { toast.success(data.message || 'Renewed'); setRenewTarget(null); setRenewPaymentMethod(''); setRenewProof(''); refreshSelected(); loadList() }
-    else toast.error(data.error || 'Failed to renew')
+    if (res.ok) {
+      toast.success(data.message || 'Renewed'); setRenewTarget(null); setRenewPaymentMethod(''); setRenewProof('')
+      setRenewSessionCount(1); setRenewDiscountType('NONE'); setRenewDiscountValue('')
+      refreshSelected(); loadList()
+    } else toast.error(data.error || 'Failed to renew')
   }
 
   async function confirmSwitch() {
@@ -283,13 +365,6 @@ export default function FightersPage() {
     if (!window.confirm('Remove this enrollment? This cannot be undone.')) return
     const res = await fetch(`/api/class-enrollments?id=${enrollmentId}`, { method: 'DELETE' })
     if (res.ok) { toast.success('Enrollment removed'); refreshSelected(); loadList() } else toast.error('Failed to remove')
-  }
-
-  async function deleteMember() {
-    if (!deleteTarget) return
-    const res = await fetch(`/api/members?id=${deleteTarget.id}`, { method: 'DELETE' })
-    if (res.ok) { toast.success(`${deleteTarget.firstName} removed`); setDeleteTarget(null); setSelected(null); loadList() }
-    else toast.error('Failed to delete')
   }
 
   const combinedSessionsPerWeek = (m: Member) => m.enrollments?.filter(e => e.status === 'ACTIVE').reduce((s, e) => s + (e.class?.daysOfWeek?.length || 0), 0) ?? 0
@@ -400,10 +475,18 @@ export default function FightersPage() {
                   </div>
                 </div>
                 {addForm.classId && (
-                  <PaymentMethodFields
-                    method={addForm.paymentMethod} onMethod={v => setAddForm(f => ({ ...f, paymentMethod: v }))}
-                    proof={addForm.proofPhoto} onProof={v => setAddForm(f => ({ ...f, proofPhoto: v }))}
-                  />
+                  <>
+                    <DiscountAndPricingStep
+                      cls={classes.find(c => c.id === addForm.classId)}
+                      sessionCount={addSessionCount} onSessionCount={setAddSessionCount}
+                      discountType={addDiscountType} onDiscountType={setAddDiscountType}
+                      discountValue={addDiscountValue} onDiscountValue={setAddDiscountValue}
+                    />
+                    <PaymentMethodFields
+                      method={addForm.paymentMethod} onMethod={v => setAddForm(f => ({ ...f, paymentMethod: v }))}
+                      proof={addForm.proofPhoto} onProof={v => setAddForm(f => ({ ...f, proofPhoto: v }))}
+                    />
+                  </>
                 )}
                 {classes.length === 0 && <p className="text-xs text-yellow-400/80">No approved classes yet — create one first in Classes.</p>}
                 <p className="text-xs text-dark-500">Training more than one discipline? Add this fighter first, then use &quot;+ Sign into another class&quot; from their profile.</p>
@@ -448,10 +531,6 @@ export default function FightersPage() {
                   <button onClick={() => setQrOpenFor(qrOpenFor === selected.id ? null : selected.id)}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-dark-700 border border-dark-600 text-dark-200 text-xs font-semibold hover:bg-dark-600 transition-colors">
                     <QrCode size={13}/> {qrOpenFor === selected.id ? 'Hide QR' : 'Show QR'}
-                  </button>
-                  <button onClick={() => setDeleteTarget(selected)}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-crimson-500/10 border border-crimson-500/20 text-crimson-400 text-xs font-semibold hover:bg-crimson-500/20 transition-colors ml-auto">
-                    <Trash2 size={13}/> Delete
                   </button>
                 </div>
 
@@ -646,6 +725,14 @@ export default function FightersPage() {
                   </select>
                 </div>
                 <div><label className="label">Start Date</label><input type="date" value={addClassForm.startDate} onChange={e => setAddClassForm(f => ({ ...f, startDate: e.target.value }))} className="input" /></div>
+                {addClassForm.classId && (
+                  <DiscountAndPricingStep
+                    cls={classes.find(c => c.id === addClassForm.classId)}
+                    sessionCount={addClassSessionCount} onSessionCount={setAddClassSessionCount}
+                    discountType={addClassDiscountType} onDiscountType={setAddClassDiscountType}
+                    discountValue={addClassDiscountValue} onDiscountValue={setAddClassDiscountValue}
+                  />
+                )}
                 <PaymentMethodFields
                   method={addClassForm.paymentMethod} onMethod={v => setAddClassForm(f => ({ ...f, paymentMethod: v }))}
                   proof={addClassForm.proofPhoto} onProof={v => setAddClassForm(f => ({ ...f, proofPhoto: v }))}
@@ -672,7 +759,13 @@ export default function FightersPage() {
               <h3 className="font-display text-2xl text-white mb-2">CONFIRM RENEWAL</h3>
               <p className="text-dark-300 text-sm mb-1">Renew <span className="text-white font-semibold">{renewTarget.class.name}</span> for {selected?.firstName}?</p>
               <p className="text-dark-400 text-xs mb-4">Starts a new {renewTarget.class.durationDays}-day cycle for {formatCurrency(renewTarget.class.price)}.</p>
-              <div className="mb-4">
+              <div className="mb-4 space-y-3">
+                <DiscountAndPricingStep
+                  cls={renewTarget.class}
+                  sessionCount={renewSessionCount} onSessionCount={setRenewSessionCount}
+                  discountType={renewDiscountType} onDiscountType={setRenewDiscountType}
+                  discountValue={renewDiscountValue} onDiscountValue={setRenewDiscountValue}
+                />
                 <PaymentMethodFields method={renewPaymentMethod} onMethod={setRenewPaymentMethod} proof={renewProof} onProof={setRenewProof} />
               </div>
               <div className="bg-dark-700 rounded-xl p-3 text-xs text-dark-300 mb-6 flex items-center gap-2">
@@ -680,7 +773,7 @@ export default function FightersPage() {
                 This renewal will be recorded as confirmed by <span className="text-white font-semibold">{currentUserName}</span>.
               </div>
               <div className="flex gap-3">
-                <button onClick={() => { setRenewTarget(null); setRenewPaymentMethod(''); setRenewProof('') }} className="btn-ghost flex-1 justify-center">Cancel</button>
+                <button onClick={() => { setRenewTarget(null); setRenewPaymentMethod(''); setRenewProof(''); setRenewSessionCount(1); setRenewDiscountType('NONE'); setRenewDiscountValue('') }} className="btn-ghost flex-1 justify-center">Cancel</button>
                 <button onClick={confirmRenew} disabled={renewing} className="btn-primary flex-1 justify-center disabled:opacity-50">
                   {renewing ? 'Renewing…' : 'Confirm Renewal'}
                 </button>
@@ -717,27 +810,6 @@ export default function FightersPage() {
                 <button onClick={confirmSwitch} disabled={switching || !switchToClassId} className="flex-1 justify-center bg-blue-500 hover:bg-blue-400 text-white font-bold py-3 px-6 rounded-lg transition-colors disabled:opacity-50 text-sm">
                   {switching ? 'Switching…' : 'Confirm Switch'}
                 </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* ── Delete Confirm ────────────────────────────────────────── */}
-      <AnimatePresence>
-        {deleteTarget && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-dark-800 border border-crimson-500/30 rounded-2xl p-8 w-full max-w-sm text-center">
-              <div className="w-14 h-14 rounded-full bg-crimson-500/10 border border-crimson-500/30 flex items-center justify-center mx-auto mb-4">
-                <AlertTriangle size={24} className="text-crimson-400"/>
-              </div>
-              <h3 className="font-display text-2xl text-white mb-2">DELETE FIGHTER</h3>
-              <p className="text-white font-semibold mb-1">{deleteTarget.firstName} {deleteTarget.lastName}</p>
-              <p className="text-dark-400 text-sm mb-6">This removes all their classes, attendance, and payment history. Cannot be undone.</p>
-              <div className="flex gap-3">
-                <button onClick={() => setDeleteTarget(null)} className="btn-ghost flex-1 justify-center">Cancel</button>
-                <button onClick={deleteMember} className="flex-1 bg-crimson-600 hover:bg-crimson-500 text-white font-bold py-3 px-6 rounded-lg transition-colors text-sm">Yes, Delete</button>
               </div>
             </motion.div>
           </div>

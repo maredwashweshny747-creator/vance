@@ -46,7 +46,7 @@ export async function generateFighterId(gymId: string): Promise<string> {
  * Whichever comes first. Call this whenever enrollments are read/listed so
  * status stays accurate without a background job.
  */
-export async function checkAndExpireEnrollment(enrollment: { id: string; status: string; endDate: Date | null }, cls: { daysOfWeek: string[]; durationDays: number; isOneTime?: boolean }) {
+export async function checkAndExpireEnrollment(enrollment: { id: string; status: string; endDate: Date | null; sessionCount?: number | null }, cls: { daysOfWeek: string[]; durationDays: number; isOneTime?: boolean; type?: string }) {
   if (enrollment.status !== 'ACTIVE') return enrollment.status
 
   const daysPassed = enrollment.endDate ? new Date() > new Date(enrollment.endDate) : false
@@ -54,7 +54,10 @@ export async function checkAndExpireEnrollment(enrollment: { id: string; status:
   const attended = await prisma.classAttendance.count({
     where: { enrollmentId: enrollment.id, status: 'ATTENDED' },
   })
-  const sessionsAllowed = cls.isOneTime ? 1 : sessionsAllowedForCycle(cls.daysOfWeek.length, cls.durationDays)
+  // Private/session-based classes are bounded by the sessions purchased, not a weekly schedule.
+  const sessionsAllowed = cls.type === 'PRIVATE'
+    ? (enrollment.sessionCount || 0)
+    : cls.isOneTime ? 1 : sessionsAllowedForCycle(cls.daysOfWeek.length, cls.durationDays)
   const sessionsUsedUp = sessionsAllowed > 0 && attended >= sessionsAllowed
 
   if (daysPassed || sessionsUsedUp) {
