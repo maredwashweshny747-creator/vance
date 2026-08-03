@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Target, Plus, Search, Phone, Mail, MessageCircle, TrendingUp, UserCheck, Clock, AlertCircle, X, ChevronDown, Trash2 } from 'lucide-react'
 import { cn, formatDate } from '@/lib/utils'
+import Pagination from '@/components/dashboard/Pagination'
 import toast from 'react-hot-toast'
 
 const STATUSES = ['NEW','CONTACTED','TRIAL','NEGOTIATING','CONVERTED','LOST']
@@ -30,11 +31,13 @@ interface Stats { total:number; converted:number; trials:number; newLeads:number
 const PIPELINE = ['NEW','CONTACTED','TRIAL','NEGOTIATING','CONVERTED']
 
 export default function LeadsPage() {
-  const [data, setData] = useState<{ leads: Lead[]; stats: Stats } | null>(null)
+  const [data, setData] = useState<{ leads: Lead[]; stats: Stats; page?: number; pageSize?: number; total?: number; totalPages?: number } | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('ALL')
   const [view, setView] = useState<'pipeline'|'list'>('pipeline')
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
   const [showForm, setShowForm] = useState(false)
   const [selected, setSelected] = useState<Lead | null>(null)
   const [interactionNote, setInteractionNote] = useState('')
@@ -46,9 +49,11 @@ export default function LeadsPage() {
     const p = new URLSearchParams()
     if (search) p.set('search', search)
     if (filterStatus !== 'ALL') p.set('status', filterStatus)
+    if (view === 'list') { p.set('page', String(page)); p.set('pageSize', String(pageSize)) }
     fetch(`/api/leads?${p}`).then(r=>r.json()).then(d=>{ setData(d); setLoading(false) }).catch(()=>setLoading(false))
   }
-  useEffect(()=>{ load() },[search, filterStatus]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{ load() },[search, filterStatus, view, page, pageSize]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{ setPage(1) },[search, filterStatus, view]) // filters/search/view switch always jump back to page 1
 
   async function addLead(e:React.FormEvent) {
     e.preventDefault()
@@ -199,6 +204,8 @@ export default function LeadsPage() {
               </tbody>
             </table>
           </div>
+          <Pagination page={page} totalPages={data?.totalPages || 1} total={data?.total || 0} pageSize={pageSize}
+            onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1) }} />
         </div>
       )}
 

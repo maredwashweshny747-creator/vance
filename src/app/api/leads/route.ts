@@ -16,31 +16,44 @@ export async function GET(req: NextRequest) {
   const status = searchParams.get('status')
   const search = searchParams.get('search')
 
-  const leads = await prisma.lead.findMany({
-    where: {
-      gymId: gym.id,
-      ...(status && status !== 'ALL' ? { status } : {}),
-      ...(search ? { OR: [
-        { firstName: { contains: search } },
-        { lastName:  { contains: search } },
-        { phone:     { contains: search } },
-      ]} : {}),
-    },
-    include: { interactions: { orderBy: { createdAt: 'desc' }, take: 1 } },
-    orderBy: { createdAt: 'desc' },
-  })
+  const pageParam = searchParams.get('page')
+  const page = Math.max(1, parseInt(pageParam || '1', 10) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '25', 10) || 25))
+  const paginate = pageParam !== null // pipeline/kanban view needs the whole matching set, unpaginated
 
-  const total        = leads.length
-  const converted    = leads.filter(l => l.status === 'CONVERTED').length
-  const trials       = leads.filter(l => l.status === 'TRIAL').length
-  const newLeads     = leads.filter(l => l.status === 'NEW').length
-  const followUpsDue = leads.filter(l =>
-    l.followUpAt && new Date(l.followUpAt) <= new Date() && !['CONVERTED','LOST'].includes(l.status)
-  ).length
+  const where = {
+    gymId: gym.id,
+    ...(status && status !== 'ALL' ? { status } : {}),
+    ...(search ? { OR: [
+      { firstName: { contains: search } },
+      { lastName:  { contains: search } },
+      { phone:     { contains: search } },
+    ]} : {}),
+  }
+
+  const [total, leads] = await Promise.all([
+    prisma.lead.count({ where }),
+    prisma.lead.findMany({
+      where,
+      include: { interactions: { orderBy: { createdAt: 'desc' }, take: 1 } },
+      orderBy: { createdAt: 'desc' },
+      ...(paginate ? { skip: (page - 1) * pageSize, take: pageSize } : {}),
+    }),
+  ])
+
+  // Stats reflect the gym's whole pipeline, not just the current filtered page.
+  const gymWhere = { gymId: gym.id }
+  const [allTotal, converted, trials, newLeads, followUpsDue] = await Promise.all([
+    prisma.lead.count({ where: gymWhere }),
+    prisma.lead.count({ where: { ...gymWhere, status: 'CONVERTED' } }),
+    prisma.lead.count({ where: { ...gymWhere, status: 'TRIAL' } }),
+    prisma.lead.count({ where: { ...gymWhere, status: 'NEW' } }),
+    prisma.lead.count({ where: { ...gymWhere, followUpAt: { lte: new Date() }, status: { notIn: ['CONVERTED', 'LOST'] } } }),
+  ])
 
   return NextResponse.json({
-    leads,
-    stats: { total, converted, trials, newLeads, followUpsDue, conversionRate: total > 0 ? Math.round((converted/total)*100) : 0 },
+    leads, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)),
+    stats: { total: allTotal, converted, trials, newLeads, followUpsDue, conversionRate: allTotal > 0 ? Math.round((converted/allTotal)*100) : 0 },
   })
 }
 

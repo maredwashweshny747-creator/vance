@@ -124,9 +124,10 @@ export default function InventoryPage() {
             </div>
           )}
           <div className="bg-dark-800 border border-dark-600 rounded-2xl overflow-hidden">
+            <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="border-b border-dark-700"><tr>
-                {['Item','Category','Cost','Price','Stock','Margin','Actions'].map(h=><th key={h} className="text-left text-xs text-dark-400 font-medium px-5 py-3">{h}</th>)}
+                {['Item','Category','Cost','Price','Stock','Margin','Actions'].map(h=><th key={h} className="text-left text-xs text-dark-400 font-medium px-5 py-3 whitespace-nowrap">{h}</th>)}
               </tr></thead>
               <tbody className="divide-y divide-dark-700">
                 {loading ? [...Array(4)].map((_,i)=><tr key={i}><td colSpan={7}><div className="h-12 skeleton m-4 rounded"/></td></tr>)
@@ -160,6 +161,7 @@ export default function InventoryPage() {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       )}
@@ -229,9 +231,10 @@ export default function InventoryPage() {
       {/* Sales log */}
       {tab === 'sales' && (
         <div className="bg-dark-800 border border-dark-600 rounded-2xl overflow-hidden">
+          <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="border-b border-dark-700"><tr>
-              {['Item','Qty','Unit Price','Total','Date'].map(h=><th key={h} className="text-left text-xs text-dark-400 font-medium px-5 py-3">{h}</th>)}
+              {['Item','Qty','Unit Price','Total','Date'].map(h=><th key={h} className="text-left text-xs text-dark-400 font-medium px-5 py-3 whitespace-nowrap">{h}</th>)}
             </tr></thead>
             <tbody className="divide-y divide-dark-700">
               {sales.length===0?<tr><td colSpan={5} className="px-5 py-12 text-center text-dark-400">No sales yet</td></tr>
@@ -246,6 +249,7 @@ export default function InventoryPage() {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

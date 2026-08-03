@@ -6,12 +6,13 @@ import { UserCheck, Search, Users, TrendingUp, AlertCircle, Clock, CheckCircle2,
 import Link from 'next/link'
 import { getInitials, formatDateTime, cn } from '@/lib/utils'
 import { disciplineLabel } from '@/lib/categories'
+import Pagination from '@/components/dashboard/Pagination'
 import toast from 'react-hot-toast'
 
 interface PlanEnrollment { id: string; class: { id: string; name: string; category?: string | null } }
 interface Member { id: string; firstName: string; lastName: string; email: string; enrollments: PlanEnrollment[] }
 interface CheckIn { id: string; checkedIn: string; method: string; member: Member; memberPlan?: { plan: { name: string; category?: string | null } } }
-interface Stats { checkIns: CheckIn[]; todayCount: number; weeklyCheckIns: number; inactiveCount: number }
+interface Stats { checkIns: CheckIn[]; todayCount: number; weeklyCheckIns: number; inactiveCount: number; page?: number; pageSize?: number; total?: number; totalPages?: number }
 
 interface CoachRow {
   coachId: string; firstName: string; lastName: string
@@ -29,9 +30,12 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(true)
   const [checkingIn, setCheckingIn] = useState<string | null>(null)
   const [planPicker, setPlanPicker] = useState<Member | null>(null)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
 
   function loadStats() {
-    fetch('/api/attendance?view=today')
+    const p = new URLSearchParams({ view: 'today', page: String(page), pageSize: String(pageSize) })
+    fetch(`/api/attendance?${p}`)
       .then(r => r.json())
       .then(d => { setStats(d); setLoading(false) })
       .catch(() => setLoading(false))
@@ -40,8 +44,8 @@ export default function AttendancePage() {
     fetch('/api/coach-attendance').then(r => r.ok ? r.json() : []).then(d => { if (Array.isArray(d)) setCoaches(d) }).catch(() => {})
   }
 
+  useEffect(() => { loadStats() }, [page, pageSize]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    loadStats()
     loadCoaches()
     fetch('/api/attendance?view=members')
       .then(r => r.json())
@@ -191,6 +195,8 @@ export default function AttendancePage() {
               </motion.div>
             ))}
           </div>
+          <Pagination page={page} totalPages={stats?.totalPages || 1} total={stats?.total || 0} pageSize={pageSize}
+            onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1) }} />
         </div>
       </div>
 

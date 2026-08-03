@@ -127,7 +127,7 @@ export default function PayrollPage() {
       {tab === 'payroll' && (
         <>
           {/* Summary */}
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="card text-center"><div className="font-display text-3xl text-white mb-1">{formatCurrency(totalPending+totalPaid)}</div><div className="text-xs text-dark-400">Total This Month</div></div>
             <div className="card text-center"><div className="font-display text-3xl text-yellow-400 mb-1">{formatCurrency(totalPending)}</div><div className="text-xs text-dark-400">Pending</div></div>
             <div className="card text-center"><div className="font-display text-3xl text-primary-400 mb-1">{formatCurrency(totalPaid)}</div><div className="text-xs text-dark-400">Paid</div></div>

@@ -25,16 +25,20 @@ export async function GET(req: NextRequest) {
   // Today's check-ins
   const today = startOfDay(new Date())
   const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1)
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '25', 10) || 25))
 
-  const marks = await prisma.classAttendance.findMany({
-    where: {
-      class: { gymId: gym.id },
-      date: { gte: today, lt: tomorrow },
-      status: 'ATTENDED',
-    },
-    include: { member: true, class: true },
-    orderBy: { markedAt: 'desc' },
-  })
+  const checkInWhere = { class: { gymId: gym.id }, date: { gte: today, lt: tomorrow }, status: 'ATTENDED' }
+  const [marksTotal, marks] = await Promise.all([
+    prisma.classAttendance.count({ where: checkInWhere }),
+    prisma.classAttendance.findMany({
+      where: checkInWhere,
+      include: { member: true, class: true },
+      orderBy: { markedAt: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ])
 
   // Weekly stats
   const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7)
@@ -56,7 +60,8 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     checkIns: marks.map(m => ({ id: m.id, checkedIn: m.markedAt, method: m.method, member: m.member, memberPlan: { plan: { name: m.class.name } } })),
-    todayCount: marks.length, weeklyCheckIns, inactiveCount,
+    todayCount: marksTotal, weeklyCheckIns, inactiveCount,
+    page, pageSize, total: marksTotal, totalPages: Math.max(1, Math.ceil(marksTotal / pageSize)),
   })
 }
 

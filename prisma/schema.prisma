@@ -99,7 +99,8 @@ model Member {
   firstName   String
   lastName    String
   email       String?
-  phone       String?
+  phone       String?  @unique // must be unique across the whole database, per spec
+  parentPhone String?  // optional — parent/guardian contact, shown alongside the fighter's own phone
   address     String?
   dateOfBirth String?
   birthYear   Int?
@@ -122,6 +123,7 @@ model Member {
 
   @@unique([gymId, email])
   @@unique([gymId, fighterId])
+  @@index([gymId])
 }
 
 // ─── Coaches (logged-in users, paid per session) ──────────────────────────
@@ -254,6 +256,8 @@ model ClassAttendance {
   member     Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
 
   @@unique([enrollmentId, date])
+  @@index([classId, date])
+  @@index([memberId])
 }
 
 model ClassBooking {
@@ -299,6 +303,12 @@ model Payment {
   branch     Branch?          @relation(fields: [branchId], references: [id])
   class      GymClass?        @relation(fields: [classId], references: [id], onDelete: SetNull)
   enrollment ClassEnrollment? @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+
+  @@index([gymId, paidAt])
+  @@index([gymId, status])
+  @@index([memberId])
+  @@index([classId])
+  @@index([enrollmentId])
 }
 
 model Announcement {
@@ -335,6 +345,9 @@ model Lead {
 
   gym          Gym           @relation(fields: [gymId], references: [id], onDelete: Cascade)
   interactions LeadInteraction[]
+
+  @@index([gymId, status])
+  @@index([gymId, createdAt])
 }
 
 model LeadInteraction {

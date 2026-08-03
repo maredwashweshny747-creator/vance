@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import { cn, formatDate, formatCurrency, membershipColors, getInitials, whatsappLink, DAY_LABELS } from '@/lib/utils'
 import { disciplineLabel } from '@/lib/categories'
+import Pagination from '@/components/dashboard/Pagination'
 import toast from 'react-hot-toast'
 
 interface ClassInfo { id: string; name: string; category?: string | null; daysOfWeek: string[]; price: number; durationDays: number; status: string; type?: string }
@@ -22,7 +23,7 @@ interface Enrollment {
   monthSummary?: MonthSummary
 }
 interface Member {
-  id: string; fighterId: string; firstName: string; lastName: string; email?: string; phone?: string; photo?: string | null
+  id: string; fighterId: string; firstName: string; lastName: string; email?: string; phone?: string; parentPhone?: string; photo?: string | null
   birthYear?: number | null
   branchId?: string
   notes?: string
@@ -238,26 +239,38 @@ export default function FightersPage() {
   const [qrOpenFor, setQrOpenFor] = useState<string | null>(null)
   const [whatsappTemplate, setWhatsappTemplate] = useState('')
   const [editingFighter, setEditingFighter] = useState(false)
-  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '', phone: '', birthYear: '', branchId: '', notes: '' })
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '', phone: '', parentPhone: '', birthYear: '', branchId: '', notes: '' })
   const [savingEdit, setSavingEdit] = useState(false)
   const { data: session } = useSession()
 
   const [addForm, setAddForm] = useState({
-    firstName: '', lastName: '', email: '', phone: '', photo: '', birthYear: '',
+    firstName: '', lastName: '', email: '', phone: '', parentPhone: '', photo: '', birthYear: '',
     classId: '', startDate: new Date().toISOString().split('T')[0], paymentMethod: '', proofPhoto: '',
     notes: '', branchId: '',
   })
   const [addClassForm, setAddClassForm] = useState({ classId: '', startDate: new Date().toISOString().split('T')[0], paymentMethod: '', proofPhoto: '' })
+
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(25)
+  const [total, setTotal] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
 
   function loadList() {
     setLoading(true)
     const params = new URLSearchParams()
     if (statusFilter !== 'ALL') params.set('status', statusFilter)
     if (search) params.set('search', search)
-    fetch(`/api/members?${params}`).then(r => r.ok ? r.json() : []).then(d => { setMembers(Array.isArray(d) ? d : []); setLoading(false) }).catch(() => setLoading(false))
+    params.set('page', String(page))
+    params.set('pageSize', String(pageSize))
+    fetch(`/api/members?${params}`).then(r => r.ok ? r.json() : null).then(d => {
+      setMembers(Array.isArray(d?.data) ? d.data : [])
+      setTotal(d?.total || 0); setTotalPages(d?.totalPages || 1)
+      setLoading(false)
+    }).catch(() => setLoading(false))
   }
 
-  useEffect(() => { loadList() }, [statusFilter]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { loadList() }, [statusFilter, page, pageSize]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { setPage(1) }, [search, statusFilter]) // filters/search always jump back to page 1
   useEffect(() => { const t = setTimeout(loadList, 300); return () => clearTimeout(t) }, [search]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -278,7 +291,7 @@ export default function FightersPage() {
       const m = await res.json()
       setSelected(m)
       setEditingFighter(false)
-      setEditForm({ firstName: m.firstName || '', lastName: m.lastName || '', email: m.email || '', phone: m.phone || '', birthYear: m.birthYear ? String(m.birthYear) : '', branchId: m.branchId || '', notes: m.notes || '' })
+      setEditForm({ firstName: m.firstName || '', lastName: m.lastName || '', email: m.email || '', phone: m.phone || '', parentPhone: m.parentPhone || '', birthYear: m.birthYear ? String(m.birthYear) : '', branchId: m.branchId || '', notes: m.notes || '' })
     }
   }
   function refreshSelected() { if (selected) openMember(selected.id) }
@@ -306,7 +319,7 @@ export default function FightersPage() {
     if (res.ok) {
       toast.success('Fighter added!')
       setShowAdd(false)
-      setAddForm(f => ({ ...f, firstName: '', lastName: '', email: '', phone: '', photo: '', birthYear: '', paymentMethod: '', proofPhoto: '', notes: '', branchId: '' }))
+      setAddForm(f => ({ ...f, firstName: '', lastName: '', email: '', phone: '', parentPhone: '', photo: '', birthYear: '', paymentMethod: '', proofPhoto: '', notes: '', branchId: '' }))
       setAddSessionCount(1); setAddDiscountType('NONE'); setAddDiscountValue('')
       loadList()
     } else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to add fighter') }
@@ -432,6 +445,8 @@ export default function FightersPage() {
             </tbody>
           </table>
         </div>
+        <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize}
+          onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1) }} />
       </div>
 
       {/* ── Add Fighter Modal ─────────────────────────────────────── */}
@@ -453,6 +468,7 @@ export default function FightersPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className="label">Email (optional)</label><input type="email" value={addForm.email} onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))} className="input" /></div>
                   <div><label className="label">Phone (for WhatsApp)</label><input value={addForm.phone} onChange={e => setAddForm(f => ({ ...f, phone: e.target.value }))} className="input" placeholder="+20 100 000 0000" /></div>
+                  <div><label className="label">Parent Phone (optional)</label><input value={addForm.parentPhone} onChange={e => setAddForm(f => ({ ...f, parentPhone: e.target.value }))} className="input" placeholder="+20 100 000 0000" /></div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className="label">Birth Year</label><input type="number" value={addForm.birthYear} onChange={e => setAddForm(f => ({ ...f, birthYear: e.target.value }))} className="input" placeholder="e.g. 1998" min={1930} max={new Date().getFullYear()} /></div>
@@ -558,6 +574,7 @@ export default function FightersPage() {
                       <div className="grid grid-cols-2 gap-2">
                         <div><label className="label text-xs">Email</label><input type="email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} className="input py-2 text-sm" /></div>
                         <div><label className="label text-xs">Phone</label><input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} className="input py-2 text-sm" /></div>
+                        <div><label className="label text-xs">Parent Phone</label><input value={editForm.parentPhone} onChange={e => setEditForm(f => ({ ...f, parentPhone: e.target.value }))} className="input py-2 text-sm" /></div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div><label className="label text-xs">Birth Year</label><input type="number" value={editForm.birthYear} onChange={e => setEditForm(f => ({ ...f, birthYear: e.target.value }))} className="input py-2 text-sm" placeholder="e.g. 1995" /></div>
@@ -580,6 +597,7 @@ export default function FightersPage() {
                         ['Fighter ID (portal login)', selected.fighterId],
                         ['Email', selected.email || '—'],
                         ['Phone', selected.phone || '—'],
+                        ['Parent Phone', selected.parentPhone || '—'],
                         ['Birth Year', selected.birthYear || '—'],
                         ['Branch', branches.find(b => b.id === selected.branchId)?.name || 'Unassigned'],
                         ['Notes', selected.notes || '—'],
@@ -617,7 +635,7 @@ export default function FightersPage() {
 
                         {/* Monthly session summary: attended / excused / absent / remaining */}
                         {e.monthSummary && (
-                          <div className="grid grid-cols-4 gap-2 my-3">
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 my-3">
                             <div className="bg-primary-400/5 border border-primary-400/20 rounded-lg py-2 text-center">
                               <div className="flex items-center justify-center gap-1 text-primary-400"><CheckCircle2 size={12}/><span className="text-lg font-bold">{e.monthSummary.attended}</span></div>
                               <div className="text-dark-400 text-[10px] uppercase tracking-wide mt-0.5">Attended</div>

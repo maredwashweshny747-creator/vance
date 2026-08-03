@@ -68,28 +68,41 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ...memberWithName, enrollments: enrollmentsWithSummary, recentAttendance })
   }
 
-  const members = await prisma.member.findMany({
-    where: {
-      gymId: gym.id,
-      ...(search ? { OR: [{ firstName: { contains: search } }, { lastName: { contains: search } }, { email: { contains: search } }] } : {}),
-    },
-    include: { enrollments: { include: { class: true } } },
-    orderBy: { createdAt: 'desc' },
-  })
+  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
+  const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '25', 10) || 25))
+
+  const where = {
+    gymId: gym.id,
+    ...(search ? { OR: [
+      { firstName: { contains: search } }, { lastName: { contains: search } }, { email: { contains: search } },
+      { phone: { contains: search } }, { parentPhone: { contains: search } }, { fighterId: { contains: search } },
+    ] } : {}),
+  }
+
+  const [total, members] = await Promise.all([
+    prisma.member.count({ where }),
+    prisma.member.findMany({
+      where,
+      include: { enrollments: { include: { class: true } } },
+      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+    }),
+  ])
 
   const results = []
   for (const m of members) {
-    for (const e of m.enrollments) await checkAndExpireEnrollment(e, e.class)
-    // re-read statuses post-expiry-check for accurate summary below
-    const freshEnrollments = await prisma.classEnrollment.findMany({ where: { memberId: m.id }, include: { class: true } })
-    const overallStatus = freshEnrollments.some(e => e.status === 'ACTIVE') ? 'ACTIVE'
-      : freshEnrollments.some(e => e.status === 'FROZEN') ? 'FROZEN'
-      : freshEnrollments.some(e => e.status === 'EXPIRED') ? 'EXPIRED'
-      : freshEnrollments.length > 0 ? 'CANCELED' : 'NO_PLAN'
-    results.push({ ...m, enrollments: freshEnrollments, overallStatus })
+    // checkAndExpireEnrollment already tells us the (possibly just-updated) status —
+    // no need to re-fetch the member's enrollments a second time to find out.
+    for (const e of m.enrollments) (e as any).status = await checkAndExpireEnrollment(e, e.class)
+    const overallStatus = m.enrollments.some(e => e.status === 'ACTIVE') ? 'ACTIVE'
+      : m.enrollments.some(e => e.status === 'FROZEN') ? 'FROZEN'
+      : m.enrollments.some(e => e.status === 'EXPIRED') ? 'EXPIRED'
+      : m.enrollments.length > 0 ? 'CANCELED' : 'NO_PLAN'
+    results.push({ ...m, overallStatus })
   }
 
-  return NextResponse.json(results)
+  return NextResponse.json({ data: results, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) })
 }
 
 export async function POST(req: NextRequest) {
@@ -98,6 +111,10 @@ export async function POST(req: NextRequest) {
   const { gym, user } = result
   try {
     const body = await req.json()
+    if (body.phone) {
+      const dupe = await prisma.member.findUnique({ where: { phone: body.phone } })
+      if (dupe) return NextResponse.json({ error: 'This phone number is already assigned to another fighter.' }, { status: 409 })
+    }
     const fighterId = await generateFighterId(gym.id)
     const member = await prisma.member.create({
       data: {
@@ -107,6 +124,7 @@ export async function POST(req: NextRequest) {
         lastName:         body.lastName,
         email:            body.email            || null,
         phone:            body.phone            || null,
+        parentPhone:      body.parentPhone       || null,
         photo:            body.photo            || null,
         birthYear:        body.birthYear ? Number(body.birthYear) : null,
         branchId:         body.branchId         || null,
@@ -149,7 +167,11 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(member)
   } catch (err: any) {
-    if (err.code === 'P2002') return NextResponse.json({ error: 'Member with this email already exists' }, { status: 409 })
+    if (err.code === 'P2002') {
+      const target = Array.isArray(err.meta?.target) ? err.meta.target.join(',') : String(err.meta?.target || '')
+      if (target.includes('phone')) return NextResponse.json({ error: 'This phone number is already assigned to another fighter.' }, { status: 409 })
+      return NextResponse.json({ error: 'Member with this email already exists' }, { status: 409 })
+    }
     console.error(err)
     return NextResponse.json({ error: 'Failed to create member' }, { status: 500 })
   }
@@ -165,14 +187,26 @@ export async function PATCH(req: NextRequest) {
   if (!member) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   const body = await req.json()
 
+  // A fighter can keep their own existing number — only a *different* fighter
+  // already holding that number is a conflict.
+  if (body.phone && body.phone !== member.phone) {
+    const dupe = await prisma.member.findUnique({ where: { phone: body.phone } })
+    if (dupe && dupe.id !== id) return NextResponse.json({ error: 'This phone number is already assigned to another fighter.' }, { status: 409 })
+  }
+
   const updateData: any = {}
-  const allowedFields = ['firstName','lastName','email','phone','photo','notes','branchId']
+  const allowedFields = ['firstName','lastName','email','phone','parentPhone','photo','notes','branchId']
   for (const field of allowedFields) {
     if (body[field] !== undefined) updateData[field] = body[field] ?? null
   }
   if (body.birthYear !== undefined) updateData.birthYear = body.birthYear ? Number(body.birthYear) : null
   if (Object.keys(updateData).length > 0) {
-    await prisma.member.update({ where: { id }, data: updateData })
+    try {
+      await prisma.member.update({ where: { id }, data: updateData })
+    } catch (err: any) {
+      if (err.code === 'P2002') return NextResponse.json({ error: 'This phone number is already assigned to another fighter.' }, { status: 409 })
+      throw err
+    }
   }
   return NextResponse.json({ success: true })
 }

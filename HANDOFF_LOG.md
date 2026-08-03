@@ -32,7 +32,91 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
-## 2026-08-03 — Claude (chat) — Coach attendance restrictions, payment/class linkage, private sessions, discounts, revenue & coach stats
+## 2026-08-03 (2) — Claude (chat) — Unique phone + parent phone, atomic renew, pagination, payments filters, perf & responsive pass
+
+**Changed:**
+- Schema: `Member.phone` now globally `@unique`; added `Member.parentPhone`.
+  New indexes: `Member.gymId`; `Payment` (gymId+paidAt, gymId+status,
+  memberId, classId, enrollmentId); `ClassAttendance` (classId+date,
+  memberId); `Lead` (gymId+status, gymId+createdAt). **Migration required.**
+- `/api/members` POST/PATCH validate phone uniqueness server-side (clear
+  "already assigned to another fighter" message + P2002 catch as a
+  safety net); PATCH lets a fighter keep their own existing number.
+  Parent Phone added to create form, edit form, and the fighter detail
+  panel.
+- **Renew rewritten to be literal + atomic** (`class-enrollments` PATCH
+  `renew`): inside one `prisma.$transaction`, deletes the old payment(s),
+  deletes the old enrollment, creates a brand-new enrollment, creates a
+  brand-new payment linked to it. All four steps commit together or none
+  do. **Known consequence, flagged as an assumption:** since
+  `ClassAttendance.enrollmentId` is `onDelete: Cascade`, deleting the old
+  enrollment also deletes that cycle's attendance history — a direct
+  result of "remove the previous subscription record" being literal in
+  the spec. Worth confirming this is the intended trade-off before
+  relying on historical attendance counts across renewals.
+- **Server-side pagination** added to `/api/members` (list), `/api/leads`,
+  `/api/attendance` (today's log), and `/api/payments` — all return
+  `{ data/leads/checkIns, page, pageSize, total, totalPages }`. New shared
+  `src/components/dashboard/Pagination.tsx` (page-size selector,
+  prev/next, "showing X–Y of Z") wired into Fighters, Leads (list view
+  only — pipeline/kanban view intentionally stays unpaginated since it
+  needs the whole status-grouped set; backend only paginates leads when a
+  `page` param is actually sent), Attendance, and Payments pages. Filters
+  and search reset back to page 1 automatically.
+- **Payments page rewritten**: date filters (specific date OR from/to
+  range) and search (fighter name, phone, parent phone, class name,
+  payment ID) — combine freely. "Total Collected"/"Total Transactions"
+  now reflect the *filtered* set (server-computed aggregate/count over
+  the full matching set, not just the current page), labeled "(filtered)"
+  when any filter is active.
+- **Perf**: fixed a real N+1 in the fighters list endpoint — it was doing
+  a second `findMany` per member after the expiry check to "refresh"
+  statuses that `checkAndExpireEnrollment` had already returned; now uses
+  the returned status directly. `/api/payments` uses `select` instead of
+  `include` to avoid over-fetching full row data on every page load.
+  Attendance page's data-loading `useEffect` split in two so paging
+  through today's log doesn't needlessly re-fetch coaches/members every
+  time.
+- **Responsive**: audited every page with a `<table>` — found and fixed
+  the Inventory page's two tables missing an `overflow-x-auto` wrapper
+  (Fighters/Leads/Payments/Payroll already had it). Converted three
+  fixed-column grids that would cramp on a narrow phone to responsive
+  breakpoints (Payroll summary cards, fighter detail's monthly session
+  mini-stats, Settings' Role Permissions blocks). The sidebar/nav
+  (`DashboardLayout.tsx`) already had a working mobile hamburger +
+  overlay + collapse — nothing to do there.
+
+**Why:** client spec — unique fighter phone with a clear duplicate error,
+optional parent phone; renew must be delete-old/create-new and atomic
+with no orphans/duplicates; Fighters/Attendance/Leads need real
+pagination with page-size choice; Payments needs date + multi-field
+search; general performance + mobile-usability pass.
+
+**Watch out for:**
+- `/api/members`, `/api/leads`, `/api/payments`, `/api/attendance` all
+  changed response shape (now wrapped in a pagination envelope instead of
+  a bare array for the list endpoints) — grep before adding a new
+  consumer of any of these.
+- Leads pagination is opt-in via the presence of a `page` query param —
+  don't add `page=1` by default to the pipeline/kanban fetch or it'll
+  silently truncate the board to one page's worth of leads.
+- This was a scoped pass, not an exhaustive responsive-design QA sweep —
+  no manual testing was done at each of 320/375/768/1024px, just a code
+  audit for missing scroll wrappers and non-responsive fixed-column
+  grids. Worth a visual pass on a real device/emulator before calling
+  responsive design "done."
+- Could not run `prisma generate` in this sandbox (same
+  `binaries.prisma.sh` limitation as every prior session) — schema
+  changes were hand-reviewed only. Run the migration + `tsc --noEmit`
+  locally before trusting this build.
+
+**Verified with:** `tsc --noEmit` in the working directory, AND an
+isolated re-extraction of the zip into a separate dir with `node_modules`
+symlinked in — identical result both places: same pre-existing single
+unrelated `TS2322` (missing generated Prisma client types), zero new
+errors.
+
+---
 
 **Changed:**
 - Schema: `ClassEnrollment.sessionCount` (private-session package size);

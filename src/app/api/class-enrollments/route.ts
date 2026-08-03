@@ -110,33 +110,37 @@ export async function PATCH(req: NextRequest) {
     const newStart = new Date()
     const newEnd = calcEndDate(newStart, enr.class.durationDays)
     const sessionCount = enr.class.type === 'PRIVATE' ? Math.max(1, Number(body.sessionCount) || enr.sessionCount || 1) : null
-
-    await prisma.classEnrollment.update({
-      where: { id }, data: {
-        status: 'ACTIVE', startDate: newStart, endDate: newEnd, freezeStartedAt: null, totalFreezeDaysLeft: 0,
-        sessionCount,
-        lastAction: 'RENEWED', lastActionById: user.id, lastActionAt: new Date(),
-      },
-    })
-
-    // The Payments page should only hold the current active payment for this
-    // subscription — remove the previous one(s) tied to this enrollment before
-    // creating the new one, so renewals never leave stale payments behind.
-    await prisma.payment.deleteMany({ where: { enrollmentId: enr.id } })
-
     const base = baseAmountForClass(enr.class, sessionCount)
     const { type: discountType, value: discountValue, originalAmount, amount } = applyDiscount(base, body.discountType, body.discountValue)
 
-    await prisma.payment.create({
-      data: {
-        gymId: gym.id, memberId: enr.memberId, classId: enr.classId, enrollmentId: enr.id,
-        amount, originalAmount, discountType, discountValue, currency: gym.currency || 'EGP',
-        type: 'MEMBERSHIP', status: 'COMPLETED', method: body.paymentMethod || null, proofPhoto: body.proofPhoto || null,
-        description: `Renewal — ${enr.member.firstName} ${enr.member.lastName} (${enr.class.name}${sessionCount ? `, ${sessionCount} sessions` : ''}), confirmed by ${user.name || user.email}`,
-        paidAt: new Date(),
-      },
+    // Atomic: remove the previous subscription + its payment, create a fresh
+    // subscription + a fresh payment. No step commits unless all four do —
+    // this guarantees we never end up with duplicate or orphaned subscriptions/payments.
+    // Note: deleting the old enrollment cascades and removes its ClassAttendance
+    // history too (FK is Cascade) — this is a deliberate consequence of "remove the
+    // previous subscription record" being literal, flagged as an assumption.
+    const { newEnrollment, payment } = await prisma.$transaction(async (tx) => {
+      await tx.payment.deleteMany({ where: { enrollmentId: enr.id } })
+      await tx.classEnrollment.delete({ where: { id: enr.id } })
+      const newEnrollment = await tx.classEnrollment.create({
+        data: {
+          memberId: enr.memberId, classId: enr.classId, status: 'ACTIVE', startDate: newStart, endDate: newEnd,
+          sessionCount, addedById: enr.addedById, lastAction: 'RENEWED', lastActionById: user.id, lastActionAt: new Date(),
+        },
+      })
+      const payment = await tx.payment.create({
+        data: {
+          gymId: gym.id, memberId: enr.memberId, classId: enr.classId, enrollmentId: newEnrollment.id,
+          amount, originalAmount, discountType, discountValue, currency: gym.currency || 'EGP',
+          type: 'MEMBERSHIP', status: 'COMPLETED', method: body.paymentMethod || null, proofPhoto: body.proofPhoto || null,
+          description: `Renewal — ${enr.member.firstName} ${enr.member.lastName} (${enr.class.name}${sessionCount ? `, ${sessionCount} sessions` : ''}), confirmed by ${user.name || user.email}`,
+          paidAt: new Date(),
+        },
+      })
+      return { newEnrollment, payment }
     })
-    return NextResponse.json({ success: true, message: `Renewed until ${newEnd.toDateString()}`, amountCharged: amount, renewedBy: user.name })
+
+    return NextResponse.json({ success: true, message: `Renewed until ${newEnd.toDateString()}`, amountCharged: amount, renewedBy: user.name, enrollmentId: newEnrollment.id })
   }
 
   if (action === 'cancel') {

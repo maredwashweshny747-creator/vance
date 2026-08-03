@@ -132,7 +132,7 @@ export default function SettingsPage() {
               <ShieldCheck size={18} className="text-primary-400 flex-shrink-0 mt-0.5"/>
               <div>
                 <p className="text-white font-semibold text-sm">Role Permissions</p>
-                <div className="mt-2 grid grid-cols-3 gap-3 text-xs">
+                <div className="mt-2 grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                   <div>
                     <p className="text-primary-400 font-semibold mb-1">Admin (you)</p>
                     <p className="text-dark-300">Full access — every tab, payroll, branches, analytics, settings, class approvals</p>
