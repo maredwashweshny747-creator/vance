@@ -77,10 +77,13 @@ export default function AttendancePage() {
     else toast.error(data.error || 'Failed')
   }
 
+  const [confirmTarget, setConfirmTarget] = useState<Member | null>(null)
+
   async function checkIn(member: Member) {
     if (checkedInIds.has(member.id)) { toast('Already checked in today', { icon: '✓' }); return }
     if (member.enrollments.length > 1) { setPlanPicker(member); return }
-    await submitCheckIn(member.id)
+    // Explicit confirmation step — attendance is never recorded on a single accidental click.
+    setConfirmTarget(member)
   }
 
   return (
@@ -251,6 +254,27 @@ export default function AttendancePage() {
           </div>
         </motion.div>
       )}
+
+      {/* Confirm attendance — a single click never records attendance by itself */}
+      <AnimatePresence>
+        {confirmTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setConfirmTarget(null)}>
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()} className="bg-dark-800 border border-dark-600 rounded-2xl p-6 w-full max-w-sm text-center">
+              <div className="w-12 h-12 rounded-full bg-primary-400/10 border border-primary-400/20 flex items-center justify-center mx-auto mb-4">
+                <UserCheck size={20} className="text-primary-400"/>
+              </div>
+              <h3 className="font-display text-xl text-white mb-2">CONFIRM ATTENDANCE</h3>
+              <p className="text-dark-300 text-sm mb-6">Mark <span className="text-white font-semibold">{confirmTarget.firstName} {confirmTarget.lastName}</span> as attended?</p>
+              <div className="flex gap-3">
+                <button onClick={() => setConfirmTarget(null)} className="flex-1 py-2.5 rounded-xl border border-dark-600 text-dark-300 text-sm font-semibold hover:bg-dark-700 transition-colors">Cancel</button>
+                <button onClick={async () => { const m = confirmTarget; setConfirmTarget(null); if (m) await submitCheckIn(m.id) }} disabled={checkingIn === confirmTarget.id}
+                  className="flex-1 py-2.5 rounded-xl bg-primary-400 hover:bg-primary-300 text-dark-950 text-sm font-bold transition-colors disabled:opacity-60">Confirm</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Plan picker — shown when a fighter trains more than one discipline */}
       <AnimatePresence>

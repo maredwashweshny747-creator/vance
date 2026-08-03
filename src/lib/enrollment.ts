@@ -30,13 +30,15 @@ export function scheduledOccurrencesThisMonth(cls: { daysOfWeek: string[]; isOne
  * unique per gym and never reused.
  */
 export async function generateFighterId(gymId: string): Promise<string> {
-  const last = await prisma.member.findFirst({
-    where: { gymId },
-    orderBy: { fighterId: 'desc' },
-    select: { fighterId: true },
+  // A single atomic `UPDATE ... SET seq = seq + 1` is safe under concurrency: Postgres
+  // takes a row lock for the duration of the update, so two simultaneous fighter
+  // creations can never read/increment the same starting value and collide.
+  const gym = await prisma.gym.update({
+    where: { id: gymId },
+    data: { fighterIdSeq: { increment: 1 } },
+    select: { fighterIdSeq: true, fighterIdPrefix: true },
   })
-  const next = last ? parseInt(last.fighterId, 10) + 1 : 2000
-  return String(next).padStart(8, '0')
+  return `${gym.fighterIdPrefix}${String(gym.fighterIdSeq).padStart(4, '0')}`
 }
 
 /**

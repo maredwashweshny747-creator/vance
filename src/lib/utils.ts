@@ -1,6 +1,23 @@
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
+// Egyptian mobile numbers: 010/011/012/015 followed by exactly 8 digits (11 digits total).
+export const EGYPT_PHONE_REGEX = /^01[0125]\d{8}$/
+
+export function isValidEgyptPhone(phone: string): boolean {
+  return EGYPT_PHONE_REGEX.test(phone.trim())
+}
+
+export function phoneValidationError(phone: string): string | null {
+  const trimmed = phone.trim()
+  if (!trimmed) return null // empty is allowed — phone itself is optional, this only checks format
+  if (!/^\d+$/.test(trimmed)) return 'Phone number must contain digits only.'
+  if (trimmed.length !== 11) return 'Phone number must be exactly 11 digits.'
+  if (!/^01[0125]/.test(trimmed)) return 'Phone number must start with 010, 011, 012, or 015.'
+  if (!EGYPT_PHONE_REGEX.test(trimmed)) return 'Enter a valid Egyptian mobile number (e.g. 01012345678).'
+  return null
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }

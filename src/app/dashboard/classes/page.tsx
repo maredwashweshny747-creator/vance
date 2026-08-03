@@ -40,6 +40,28 @@ export default function ClassesPage() {
   const [rejectionNote, setRejectionNote] = useState('')
   const [form, setForm] = useState(BLANK_FORM)
 
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('ALL')       // ALL | ACTIVE | INACTIVE
+  const [typeFilter, setTypeFilter] = useState('ALL')           // ALL | GROUP | PRIVATE
+  const [coachFilter, setCoachFilter] = useState('ALL')
+  const [dayFilter, setDayFilter] = useState('ALL')
+
+  const filteredClasses = classes.filter((cls: any) => {
+    if (search) {
+      const q = search.toLowerCase()
+      const matches = cls.name?.toLowerCase().includes(q)
+        || (cls.coach && `${cls.coach.firstName} ${cls.coach.lastName}`.toLowerCase().includes(q))
+        || cls.type?.toLowerCase().includes(q)
+      if (!matches) return false
+    }
+    if (statusFilter === 'ACTIVE' && cls.status !== 'APPROVED') return false
+    if (statusFilter === 'INACTIVE' && cls.status === 'APPROVED') return false
+    if (typeFilter !== 'ALL' && cls.type !== typeFilter) return false
+    if (coachFilter !== 'ALL' && cls.coachId !== coachFilter) return false
+    if (dayFilter !== 'ALL' && !(cls.daysOfWeek || []).includes(dayFilter)) return false
+    return true
+  })
+
   function load() {
     setLoading(true)
     fetch('/api/classes').then(r => r.ok ? r.json() : []).then(d => { setClasses(Array.isArray(d) ? d : []); setLoading(false) }).catch(() => setLoading(false))
@@ -128,13 +150,53 @@ export default function ClassesPage() {
         <button onClick={openAdd} className="btn-primary"><Plus size={16}/> {isCoach ? 'Submit Class' : 'Add Class'}</button>
       </div>
 
+      {/* Search & filters — all client-side against the already-loaded list, no extra requests */}
+      <div className="card flex flex-col md:flex-row gap-3 md:items-end flex-wrap">
+        <div className="flex-1 min-w-[200px]">
+          <label className="label text-xs">Search — class name, coach, or type</label>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Kickboxing, Ahmed, Private…" className="input" />
+        </div>
+        <div>
+          <label className="label text-xs">Status</label>
+          <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="input w-auto">
+            <option value="ALL">All</option>
+            <option value="ACTIVE">Active</option>
+            <option value="INACTIVE">Inactive</option>
+          </select>
+        </div>
+        <div>
+          <label className="label text-xs">Type</label>
+          <select value={typeFilter} onChange={e => setTypeFilter(e.target.value)} className="input w-auto">
+            <option value="ALL">All</option>
+            <option value="GROUP">Public Class</option>
+            <option value="PRIVATE">Private Session</option>
+          </select>
+        </div>
+        {!isCoach && (
+          <div>
+            <label className="label text-xs">Coach</label>
+            <select value={coachFilter} onChange={e => setCoachFilter(e.target.value)} className="input w-auto">
+              <option value="ALL">All coaches</option>
+              {coaches.map(c => <option key={c.id} value={c.id}>{c.firstName} {c.lastName}</option>)}
+            </select>
+          </div>
+        )}
+        <div>
+          <label className="label text-xs">Day</label>
+          <select value={dayFilter} onChange={e => setDayFilter(e.target.value)} className="input w-auto">
+            <option value="ALL">Any day</option>
+            {DAYS_OF_WEEK.map(d => <option key={d} value={d}>{DAY_LABELS[d]}</option>)}
+          </select>
+        </div>
+      </div>
+
       {loading ? (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">{[...Array(6)].map((_,i) => <div key={i} className="h-56 skeleton rounded-2xl"/>)}</div>
-      ) : classes.length === 0 ? (
-        <div className="card text-center py-16"><Calendar size={48} className="mx-auto text-dark-600 mb-4"/><p className="text-dark-400">No classes yet — add your first one</p></div>
+      ) : filteredClasses.length === 0 ? (
+        <div className="card text-center py-16"><Calendar size={48} className="mx-auto text-dark-600 mb-4"/><p className="text-dark-400">{classes.length === 0 ? 'No classes yet — add your first one' : 'No classes match your search/filters'}</p></div>
       ) : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {classes.map((cls: any, i: number) => (
+          {filteredClasses.map((cls: any, i: number) => (
             <motion.div key={cls.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
               className="card-hover group relative" style={{ borderLeftColor: cls.color || '#ffc700', borderLeftWidth: 3 }}>
               <div onClick={() => openEdit(cls)} className="cursor-pointer">

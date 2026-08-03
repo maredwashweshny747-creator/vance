@@ -69,6 +69,8 @@ model Gym {
   plan        String   @default("STARTER") // STARTER, PROFESSIONAL, ENTERPRISE
   planStatus  String   @default("ACTIVE")  // ACTIVE, PAST_DUE, CANCELED
   whatsappMessageTemplate String? // pre-filled text used by the WhatsApp button on a fighter's profile
+  fighterIdPrefix String @default("20006") // configurable fixed prefix for public Fighter IDs, e.g. 20006 -> 200060001
+  fighterIdSeq    Int    @default(0)       // atomically incremented — the next fighter gets fighterIdSeq+1
   stripeCustomerId     String?
   stripeSubscriptionId String?
   createdAt   DateTime @default(now())

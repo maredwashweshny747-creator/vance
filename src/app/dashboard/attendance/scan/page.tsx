@@ -1,8 +1,9 @@
 'use client'
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { QrCode, CheckCircle2, XCircle, UserCheck, ArrowLeft, WifiOff, Zap } from 'lucide-react'
+import { QrCode, CheckCircle2, XCircle, UserCheck, ArrowLeft, WifiOff, Zap, RotateCcw } from 'lucide-react'
 import Link from 'next/link'
+import jsQR from 'jsqr'
 import { getInitials } from '@/lib/utils'
 import { disciplineLabel } from '@/lib/categories'
 
@@ -35,6 +36,7 @@ export default function QRScannerPage() {
 
   const [cameraReady, setCameraReady]   = useState(false)
   const [cameraError, setCameraError]   = useState<string | null>(null)
+  const [invalidScanMsg, setInvalidScanMsg] = useState<string | null>(null)
   const [result, setResult]             = useState<ScanResult | null>(null)
   const [processing, setProcessing]     = useState(false)
   const [todayCount, setTodayCount]     = useState(0)
@@ -50,29 +52,55 @@ export default function QRScannerPage() {
       .then(d => { if (d.todayCount !== undefined) setTodayCount(d.todayCount) })
   }, [])
 
-  // Start camera
-  useEffect(() => {
-    async function startCamera() {
+  // Turns a raw getUserMedia error into a message someone at the front desk can actually act on.
+  function describeCameraError(err: any): string {
+    const name = err?.name || ''
+    if (name === 'NotAllowedError' || name === 'PermissionDeniedError') return 'Camera permission was denied. Allow camera access in your browser\'s address-bar/site settings, then reload this page.'
+    if (name === 'NotFoundError' || name === 'DevicesNotFoundError') return 'No camera was found on this device. Plug in a camera or use manual check-in instead.'
+    if (name === 'NotReadableError' || name === 'TrackStartError') return 'The camera is already in use by another app or browser tab. Close it and try again.'
+    if (name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError') return 'This camera doesn\'t support the requested settings — trying a lower-resolution fallback.'
+    if (name === 'SecurityError') return 'Camera access requires a secure (https) connection.'
+    return err?.message || 'Could not access the camera.'
+  }
+
+  const startCamera = useCallback(async () => {
+    setCameraError(null)
+    try {
+      let stream: MediaStream
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
+        stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
         })
-        streamRef.current = stream
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream
-          videoRef.current.play()
-          setCameraReady(true)
-        }
       } catch (err: any) {
-        setCameraError(err.message || 'Camera access denied')
+        // Overconstrained on some laptop/Safari cameras that lack a rear-facing lens — retry with no constraints.
+        if (err?.name === 'OverconstrainedError' || err?.name === 'ConstraintNotSatisfiedError') {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true })
+        } else throw err
       }
-    }
-    startCamera()
-    return () => {
-      streamRef.current?.getTracks().forEach(t => t.stop())
-      scanningRef.current = false
+      streamRef.current = stream
+      // Recover gracefully if the camera is unplugged/disabled mid-session instead of just freezing.
+      stream.getVideoTracks().forEach(track => {
+        track.onended = () => { setCameraReady(false); setCameraError('The camera disconnected. Tap Retry to reconnect.') }
+      })
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        await videoRef.current.play().catch(() => {}) // Safari sometimes rejects the first play() call — harmless
+        setCameraReady(true)
+      }
+    } catch (err: any) {
+      setCameraReady(false)
+      setCameraError(describeCameraError(err))
     }
   }, [])
+
+  // Start camera
+  useEffect(() => {
+    startCamera()
+    return () => {
+      streamRef.current?.getTracks().forEach(t => { t.onended = null; t.stop() })
+      scanningRef.current = false
+    }
+  }, [startCamera])
 
   // Scan loop — reads canvas frames and looks for QR pattern
   useEffect(() => {
@@ -87,7 +115,7 @@ export default function QRScannerPage() {
         requestAnimationFrame(scan); return
       }
 
-      const ctx = canvas.getContext('2d')
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })
       if (!ctx) { requestAnimationFrame(scan); return }
 
       canvas.width  = video.videoWidth
@@ -95,22 +123,22 @@ export default function QRScannerPage() {
       ctx.drawImage(video, 0, 0)
 
       try {
-        // Use BarcodeDetector if available (Chrome 83+, Edge, Android)
-        if ('BarcodeDetector' in window) {
-          const detector = new (window as any).BarcodeDetector({ formats: ['qr_code'] })
-          const codes = await detector.detect(canvas)
-          if (codes.length > 0) {
-            const raw = codes[0].rawValue as string
-            const now = Date.now()
-            if (raw !== lastScanned.current || now - lastScannedTime.current > 3000) {
-              lastScanned.current = raw
-              lastScannedTime.current = now
-              await processQR(raw)
-            }
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: 'dontInvert' })
+        if (code?.data) {
+          const raw = code.data
+          const now = Date.now()
+          // Debounce: ignore the same code re-read on consecutive frames, and cap re-scans of
+          // the *same* code to once per 3s so someone can't get double-checked-in by holding
+          // their QR in front of the camera a moment too long.
+          if (raw !== lastScanned.current || now - lastScannedTime.current > 3000) {
+            lastScanned.current = raw
+            lastScannedTime.current = now
+            await processQR(raw)
           }
         }
-      } catch (e) {
-        // BarcodeDetector not supported — show fallback message
+      } catch {
+        // A single bad/unreadable frame is normal (motion blur, glare) — just try the next one.
       }
 
       if (scanningRef.current) requestAnimationFrame(scan)
@@ -213,7 +241,11 @@ export default function QRScannerPage() {
     }
 
     // Expected format: vance:checkin:{memberId}
-    if (!raw.startsWith('vance:checkin:')) return
+    if (!raw.startsWith('vance:checkin:')) {
+      setInvalidScanMsg('That QR code isn\'t a Vance fighter or coach check-in code.')
+      setTimeout(() => setInvalidScanMsg(null), 2500)
+      return
+    }
     const memberId = raw.replace('vance:checkin:', '').trim()
     if (!memberId || processing || pendingChoice) return
 
@@ -282,10 +314,10 @@ export default function QRScannerPage() {
             <div className="text-center p-8">
               <WifiOff size={48} className="mx-auto text-red-400 mb-4" />
               <p className="text-white font-semibold text-lg mb-2">Camera Not Available</p>
-              <p className="text-dark-400 text-sm mb-2">{cameraError}</p>
-              <p className="text-dark-500 text-xs max-w-xs mx-auto">
-                Make sure your browser has camera permission enabled. In Chrome: click the camera icon in the address bar.
-              </p>
+              <p className="text-dark-400 text-sm mb-4 max-w-xs mx-auto">{cameraError}</p>
+              <button onClick={startCamera} className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary-400 hover:bg-primary-300 text-dark-950 text-sm font-bold transition-colors">
+                <RotateCcw size={14} /> Retry
+              </button>
             </div>
           ) : (
             <>
@@ -297,6 +329,13 @@ export default function QRScannerPage() {
                 autoPlay
               />
               <canvas ref={canvasRef} className="hidden" />
+
+              {/* Invalid QR feedback */}
+              {invalidScanMsg && (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-red-500/90 text-white text-xs font-semibold px-4 py-2 rounded-full shadow-lg z-10">
+                  {invalidScanMsg}
+                </div>
+              )}
 
               {/* Scanning overlay */}
               {!result && !pendingChoice && (

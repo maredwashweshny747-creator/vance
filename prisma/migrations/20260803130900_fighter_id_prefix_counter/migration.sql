@@ -57,6 +57,8 @@ CREATE TABLE "Gym" (
     "plan" TEXT NOT NULL DEFAULT 'STARTER',
     "planStatus" TEXT NOT NULL DEFAULT 'ACTIVE',
     "whatsappMessageTemplate" TEXT,
+    "fighterIdPrefix" TEXT NOT NULL DEFAULT '20006',
+    "fighterIdSeq" INTEGER NOT NULL DEFAULT 0,
     "stripeCustomerId" TEXT,
     "stripeSubscriptionId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -75,6 +77,7 @@ CREATE TABLE "Member" (
     "lastName" TEXT NOT NULL,
     "email" TEXT,
     "phone" TEXT,
+    "parentPhone" TEXT,
     "address" TEXT,
     "dateOfBirth" TEXT,
     "birthYear" INTEGER,
@@ -450,6 +453,12 @@ CREATE UNIQUE INDEX "Gym_slug_key" ON "Gym"("slug");
 CREATE UNIQUE INDEX "Gym_ownerId_key" ON "Gym"("ownerId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "Member_phone_key" ON "Member"("phone");
+
+-- CreateIndex
+CREATE INDEX "Member_gymId_idx" ON "Member"("gymId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Member_gymId_email_key" ON "Member"("gymId", "email");
 
 -- CreateIndex
@@ -465,10 +474,37 @@ CREATE UNIQUE INDEX "Coach_gymId_email_key" ON "Coach"("gymId", "email");
 CREATE UNIQUE INDEX "CoachAttendance_coachId_classId_date_key" ON "CoachAttendance"("coachId", "classId", "date");
 
 -- CreateIndex
+CREATE INDEX "ClassAttendance_classId_date_idx" ON "ClassAttendance"("classId", "date");
+
+-- CreateIndex
+CREATE INDEX "ClassAttendance_memberId_idx" ON "ClassAttendance"("memberId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "ClassAttendance_enrollmentId_date_key" ON "ClassAttendance"("enrollmentId", "date");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "ClassBooking_classId_memberId_key" ON "ClassBooking"("classId", "memberId");
+
+-- CreateIndex
+CREATE INDEX "Payment_gymId_paidAt_idx" ON "Payment"("gymId", "paidAt");
+
+-- CreateIndex
+CREATE INDEX "Payment_gymId_status_idx" ON "Payment"("gymId", "status");
+
+-- CreateIndex
+CREATE INDEX "Payment_memberId_idx" ON "Payment"("memberId");
+
+-- CreateIndex
+CREATE INDEX "Payment_classId_idx" ON "Payment"("classId");
+
+-- CreateIndex
+CREATE INDEX "Payment_enrollmentId_idx" ON "Payment"("enrollmentId");
+
+-- CreateIndex
+CREATE INDEX "Lead_gymId_status_idx" ON "Lead"("gymId", "status");
+
+-- CreateIndex
+CREATE INDEX "Lead_gymId_createdAt_idx" ON "Lead"("gymId", "createdAt");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "Staff_gymId_email_key" ON "Staff"("gymId", "email");

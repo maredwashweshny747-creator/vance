@@ -125,19 +125,37 @@ async function main() {
     const singleClassNames = ['Kickboxing Adults','MMA Adults','BJJ Adults','Boxing Adults','Kids Kickboxing','Drop-In Boxing']
     const addedByPool = [user.id, receptionist.id]
 
+    const egyptPrefixes = ['010','011','012','015']
+    const usedPhones = new Set<string>()
+    const nextEgyptPhone = (seed: number): string => {
+      // Deterministic-but-unique 11-digit Egyptian mobile number matching ^01[0125]\d{8}$
+      let phone = ''
+      let n = seed
+      do {
+        const prefix = egyptPrefixes[n % egyptPrefixes.length]
+        const rest = String(10000000 + (n * 7919) % 90000000).slice(0, 8)
+        phone = `${prefix}${rest}`
+        n++
+      } while (usedPhones.has(phone))
+      usedPhones.add(phone)
+      return phone
+    }
+
     for (let i = 0; i < 42; i++) {
       const first = firstNames[i % firstNames.length]
       const last = lastNames[(i * 3) % lastNames.length]
       const addedBy = pick(addedByPool)
       const createdAt = daysAgo(rand(1, 60)) // keep within a cycle or two so session math stays sane
+      const isMinor = Math.random() < 0.3 // kids classes -> a parent phone on file
 
       const member = await prisma.member.create({
         data: {
           gymId: gym.id,
-          fighterId: String(2000 + i).padStart(8, '0'),
+          fighterId: `${gym.fighterIdPrefix}${String(i + 1).padStart(4, '0')}`,
           firstName: first, lastName: last,
           email: `${first.toLowerCase()}.${last.toLowerCase()}${i}@example.com`,
-          phone: `+1555${String(1000000 + i).slice(-7)}`,
+          phone: nextEgyptPhone(i),
+          parentPhone: isMinor ? nextEgyptPhone(1000 + i) : null,
           birthYear: rand(1985, 2008),
           branchId: Math.random() < 0.7 ? pick(branches).id : null,
           createdById: addedBy,
@@ -145,10 +163,12 @@ async function main() {
         },
       })
 
-      // Most fighters sign into one class; ~20% train two disciplines at once
+      // Most fighters sign into one class; ~20% train two disciplines at once;
+      // ~15% also pick up a private 1:1 package (session-count based, not weekly).
       const classNamesForMember = Math.random() < 0.2
         ? [pick(['MMA Adults','Boxing Adults']), 'Kickboxing Adults']
         : [pick(singleClassNames)]
+      const privateClassName = Math.random() < 0.15 ? pick(['Private Boxing — 1:1', 'Private Muay Thai — 1:1']) : null
 
       for (const className of Array.from(new Set(classNamesForMember))) {
         const cls = classes[className]
@@ -159,6 +179,7 @@ async function main() {
         if (end < now) status = pick(['EXPIRED','EXPIRED','ACTIVE'])
         if (Math.random() < 0.06) status = 'FROZEN'
         if (Math.random() < 0.04) status = 'CANCELED'
+        const wasRenewed = status === 'ACTIVE' && Math.random() < 0.15 // demonstrates a renewed subscription
 
         const enrollment = await prisma.classEnrollment.create({
           data: {
@@ -166,7 +187,9 @@ async function main() {
             startDate: start, endDate: end,
             freezeStartedAt: status === 'FROZEN' ? daysAgo(rand(1,10)) : null,
             totalFreezeDaysLeft: status === 'FROZEN' ? rand(5, 20) : 0,
-            addedById: addedBy, lastAction: 'CREATED', lastActionById: addedBy, lastActionAt: start,
+            addedById: addedBy, lastAction: wasRenewed ? 'RENEWED' : 'CREATED',
+            lastActionById: wasRenewed ? pick(addedByPool) : addedBy,
+            lastActionAt: wasRenewed ? daysAgo(rand(0, 10)) : start,
           },
         })
 
@@ -189,12 +212,77 @@ async function main() {
           }
         }
 
+        // Occasional discount + a mix of payment statuses, so Payments filtering has something to show
+        const discountRoll = Math.random()
+        const discountType = discountRoll < 0.15 ? 'PERCENTAGE' : discountRoll < 0.25 ? 'FIXED' : 'NONE'
+        const discountValue = discountType === 'PERCENTAGE' ? pick([10, 15, 20]) : discountType === 'FIXED' ? pick([100, 150, 200]) : 0
+        const discountAmount = discountType === 'PERCENTAGE' ? cls.price * (discountValue / 100) : discountValue
+        const amount = Math.max(0, Math.round((cls.price - discountAmount) * 100) / 100)
+        const paymentStatus = Math.random() < 0.08 ? 'PENDING' : Math.random() < 0.03 ? 'FAILED' : 'COMPLETED'
+
         await prisma.payment.create({
-          data: { gymId: gym.id, memberId: member.id, amount: cls.price, currency: 'EGP', type: 'MEMBERSHIP', status: 'COMPLETED', method: pick(['CARD','CASH']), description: `New enrollment — ${member.firstName} ${member.lastName} (${cls.name})`, paidAt: start },
+          data: {
+            gymId: gym.id, memberId: member.id, classId: cls.id, enrollmentId: enrollment.id,
+            amount, originalAmount: cls.price, discountType, discountValue, currency: 'EGP', type: 'MEMBERSHIP',
+            status: paymentStatus, method: pick(['CARD','CASH','INSTAPAY','VODAFONE_CASH']),
+            description: `${wasRenewed ? 'Renewal' : 'New enrollment'} — ${member.firstName} ${member.lastName} (${cls.name})`,
+            paidAt: paymentStatus === 'COMPLETED' ? start : null,
+          },
+        })
+      }
+
+      // Private 1:1 session package — priced per session, not a weekly plan
+      if (privateClassName) {
+        const cls = classes[privateClassName]
+        const sessionCount = pick([4, 8, 10, 12])
+        const start = createdAt
+        const end = new Date(start); end.setFullYear(end.getFullYear() + 10) // private packages expire by session count, not date
+        const privateEnrollment = await prisma.classEnrollment.create({
+          data: {
+            memberId: member.id, classId: cls.id, status: 'ACTIVE', startDate: start, endDate: end,
+            sessionCount, addedById: addedBy, lastAction: 'CREATED', lastActionById: addedBy, lastActionAt: start,
+          },
+        })
+        const amount = cls.price * sessionCount
+        await prisma.payment.create({
+          data: {
+            gymId: gym.id, memberId: member.id, classId: cls.id, enrollmentId: privateEnrollment.id,
+            amount, originalAmount: amount, discountType: 'NONE', discountValue: 0, currency: 'EGP', type: 'MEMBERSHIP',
+            status: 'COMPLETED', method: pick(['CARD','CASH']),
+            description: `New enrollment — ${member.firstName} ${member.lastName} (${cls.name}, ${sessionCount} sessions)`,
+            paidAt: start,
+          },
         })
       }
     }
     console.log('✓ 42 fighters created & enrolled, with attendance history')
+
+    // Keep the atomic Fighter ID counter in sync with the batch above, so the
+    // next fighter created through the app continues the sequence with no gaps.
+    await prisma.gym.update({ where: { id: gym.id }, data: { fighterIdSeq: 42 } })
+  }
+
+  // ── Coach attendance (recorded by admin/reception only — coaches never self-check-in) ──
+  const existingCoachAttendance = await prisma.coachAttendance.count({ where: { class: { gymId: gym.id } } })
+  if (existingCoachAttendance === 0) {
+    const markers = [user.id, receptionist.id]
+    for (const coach of coaches) {
+      const coachClasses = await prisma.gymClass.findMany({ where: { gymId: gym.id, coachId: coach.id, status: 'APPROVED' } })
+      for (const cls of coachClasses) {
+        let cursor = daysAgo(21)
+        const today = new Date()
+        while (cursor <= today) {
+          const dayCode = DOW[cursor.getDay()]
+          if (cls.daysOfWeek.includes(dayCode) && Math.random() < 0.9) {
+            await prisma.coachAttendance.create({
+              data: { coachId: coach.id, classId: cls.id, date: new Date(cursor), status: 'ATTENDED', method: pick(['MANUAL','QR']), markedById: pick(markers) },
+            }).catch(() => {}) // ignore the rare unique-constraint hit if a date/class pair repeats across coach classes
+          }
+          cursor.setDate(cursor.getDate() + 1)
+        }
+      }
+    }
+    console.log('✓ Coach attendance history seeded')
   }
 
   // ── Coach payroll (per-session, last 2 months + current) ────────

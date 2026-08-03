@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionAndGym } from '@/lib/getGym'
-import { checkAndExpireEnrollment, generateFighterId } from '@/lib/enrollment'
-import { sessionsAllowedForCycle } from '@/lib/utils'
+import { checkAndExpireEnrollment } from '@/lib/enrollment'
+import { sessionsAllowedForCycle, phoneValidationError } from '@/lib/utils'
 import { baseAmountForClass, applyDiscount } from '@/lib/payment'
 
 // Attaches {xName} to rows by resolving the plain-string user id fields.
@@ -112,25 +112,33 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     if (body.phone) {
+      const formatError = phoneValidationError(body.phone)
+      if (formatError) return NextResponse.json({ error: formatError }, { status: 400 })
       const dupe = await prisma.member.findUnique({ where: { phone: body.phone } })
       if (dupe) return NextResponse.json({ error: 'This phone number is already assigned to another fighter.' }, { status: 409 })
     }
-    const fighterId = await generateFighterId(gym.id)
-    const member = await prisma.member.create({
-      data: {
-        gymId:            gym.id,
-        fighterId,
-        firstName:        body.firstName,
-        lastName:         body.lastName,
-        email:            body.email            || null,
-        phone:            body.phone            || null,
-        parentPhone:      body.parentPhone       || null,
-        photo:            body.photo            || null,
-        birthYear:        body.birthYear ? Number(body.birthYear) : null,
-        branchId:         body.branchId         || null,
-        notes:            body.notes            || null,
-        createdById:      user.id,
-      },
+    const member = await prisma.$transaction(async (tx) => {
+      const gymRow = await tx.gym.update({
+        where: { id: gym.id }, data: { fighterIdSeq: { increment: 1 } },
+        select: { fighterIdSeq: true, fighterIdPrefix: true },
+      })
+      const fighterId = `${gymRow.fighterIdPrefix}${String(gymRow.fighterIdSeq).padStart(4, '0')}`
+      return tx.member.create({
+        data: {
+          gymId:            gym.id,
+          fighterId,
+          firstName:        body.firstName,
+          lastName:         body.lastName,
+          email:            body.email            || null,
+          phone:            body.phone            || null,
+          parentPhone:      body.parentPhone       || null,
+          photo:            body.photo            || null,
+          birthYear:        body.birthYear ? Number(body.birthYear) : null,
+          branchId:         body.branchId         || null,
+          notes:            body.notes            || null,
+          createdById:      user.id,
+        },
+      })
     })
 
     // Optionally sign into an initial class right away — this is now optional,
@@ -190,6 +198,8 @@ export async function PATCH(req: NextRequest) {
   // A fighter can keep their own existing number — only a *different* fighter
   // already holding that number is a conflict.
   if (body.phone && body.phone !== member.phone) {
+    const formatError = phoneValidationError(body.phone)
+    if (formatError) return NextResponse.json({ error: formatError }, { status: 400 })
     const dupe = await prisma.member.findUnique({ where: { phone: body.phone } })
     if (dupe && dupe.id !== id) return NextResponse.json({ error: 'This phone number is already assigned to another fighter.' }, { status: 409 })
   }

@@ -32,7 +32,104 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
-## 2026-08-03 (2) — Claude (chat) — Unique phone + parent phone, atomic renew, pagination, payments filters, perf & responsive pass
+## 2026-08-03 (3) — Claude (chat) — Phone regex, attendance confirm dialog, cross-browser QR scanner, classes search/filters, prefixed Fighter IDs, seed overhaul
+
+**Changed:**
+- **Phone regex** (`^01[0125]\d{8}$`, Egyptian mobile): new shared
+  `isValidEgyptPhone`/`phoneValidationError` in `src/lib/utils.ts`, used by
+  both the fighters page (create + edit forms, blocks submit with a toast
+  before the request is even sent) and `/api/members` POST/PATCH (checked
+  before the uniqueness check, clear message either way).
+- **Attendance confirm dialog**: clicking Attend on the manual check-in
+  panel (`/dashboard/attendance`) now opens a "Mark X as attended?"
+  Confirm/Cancel dialog before anything is recorded; Cancel records
+  nothing. (The multi-discipline "which session?" picker already required
+  an explicit class click with the fighter's name shown, so that path was
+  left as-is — it was already a confirmation step, just a different UI.)
+- **QR scanner rewritten to be cross-browser**: root cause of the
+  inconsistency was that the old scanner only worked via the native
+  `BarcodeDetector` API (Chrome/Edge/Android only — Firefox and Safari
+  don't support it, so scanning silently never did anything there).
+  Replaced with `jsqr`, a pure-JS QR decoder that runs identically in
+  every browser regardless of native API support. Also added: camera
+  errors are now categorized by `DOMException.name` into actionable
+  messages (permission denied / no camera / camera in use /
+  needs-https / unsupported constraints, with an automatic
+  no-constraints retry on `OverconstrainedError`); a `track.onended`
+  listener + visible Retry button recovers gracefully if the camera
+  disconnects mid-session; a scanned code that isn't a recognized Vance
+  check-in code now shows "That QR code isn't a Vance fighter or coach
+  check-in code" instead of silently doing nothing. Existing duplicate-
+  scan debounce (3s same-code window) and duplicate-attendance guards
+  (`processing`/`pendingChoice`/`coachProcessing`/`pendingCoachChoice`)
+  were preserved as-is — they already worked, the bug was purely in
+  decoding.
+- **Classes page search & filters**: client-side only (search: name /
+  coach / type; filters: Active/Inactive, Public/Private, Coach, Day of
+  Week) — deliberately not an API round-trip per spec's "avoid
+  unnecessary API requests," since the whole classes list is already
+  loaded and small.
+- **Fighter ID format**: `Gym.fighterIdPrefix` (default `"20006"`,
+  configurable) + `Gym.fighterIdSeq` (atomically incremented). New
+  fighters get `{prefix}{seq.padStart(4,'0')}`, e.g. `200060001`. The
+  increment is a single `UPDATE ... SET seq = seq + 1`, which Postgres
+  row-locks — safe under concurrent creates with no random values or
+  UUIDs. The increment + `member.create` are wrapped in one
+  `$transaction` so a failed creation (e.g. some other validation error)
+  rolls back the counter too, instead of burning/skipping a number.
+  **Existing fighter IDs are untouched** — this only applies going
+  forward, per spec. **Migration required** for the new `Gym` columns.
+- **Seed data overhaul** (`prisma/seed.ts`): fighters now get real
+  Egyptian phone numbers matching the new regex (deterministically
+  generated + guaranteed unique across the batch) and use the new
+  `200060001`-style Fighter ID (also syncs `gym.fighterIdSeq = 42`
+  afterward so the next real signup continues the sequence with no
+  gap); ~30% of fighters get a `parentPhone`; ~15% also pick up a private
+  1:1 session package (`sessionCount` + per-session pricing) alongside
+  their group class; payments now carry `classId`/`enrollmentId` and a
+  mix of discount types (percentage/fixed/none) and statuses
+  (COMPLETED/PENDING/FAILED); ~15% of active enrollments are tagged
+  `lastAction: 'RENEWED'` to represent a renewed subscription; added a
+  whole new coach-attendance seeding block (marked by admin/reception
+  only, matching the app's own rule that coaches can't self-check-in).
+  Multiple coaches, multiple class types (group + private), and varied
+  attendance were already present from prior seed data and left as-is.
+
+**Why:** client spec — regex-validated phone (front + back), confirm
+before recording attendance, a QR scanner that actually works outside
+Chrome, classes search/filter without hammering the API, sequential
+prefixed Fighter IDs safe under concurrency, and seed data that
+reflects everything built in the last three sessions.
+
+**Watch out for:**
+- `jsqr` was added to `package.json` dependencies — run `npm install`
+  before building/running, or the scan page will fail to compile.
+- `Gym.fighterIdPrefix`/`fighterIdSeq` are new columns —
+  `prisma migrate dev` required. The seed script sets `fighterIdSeq = 42`
+  after seeding; if you re-seed against an existing DB with real fighters
+  already created through the app, don't blindly overwrite
+  `fighterIdSeq` — set it to (at least) the actual count of fighters
+  created so far, or you'll get an ID collision on the next real signup.
+- `import-export/route.ts`'s bulk CSV import still calls the old
+  `generateFighterId(gymId)` helper (kept for that one caller) — it's
+  still atomic per-call, just not wrapped in a shared transaction with
+  each row's `member.create`, so a mid-batch row failure could burn a
+  sequence number. Lower priority given it's a bulk/rare path, but worth
+  tightening later if gapless IDs matter that much even there.
+- Classes search/filter is entirely client-side against the list already
+  in memory — if the classes list ever needs server-side pagination too
+  (not currently in scope), this filtering logic will need to move
+  server-side at that point.
+
+**Verified with:** `tsc --noEmit` in the working directory AND an
+isolated re-extraction with `node_modules` symlinked in — identical
+result both places (same single pre-existing unrelated `TS2322`, zero
+new errors). Did not run the seed script itself in this sandbox (no DB
+connection available here) — run `npx prisma migrate dev && npm run
+db:seed` (or your project's seed command) locally to confirm it
+executes cleanly end-to-end.
+
+---
 
 **Changed:**
 - Schema: `Member.phone` now globally `@unique`; added `Member.parentPhone`.

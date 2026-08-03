@@ -7,7 +7,7 @@ import {
   MessageCircle, QrCode, ChevronRight, ArrowLeftRight, Pencil, Hourglass,
   CheckCircle2, XCircle, MinusCircle, User as UserIcon,
 } from 'lucide-react'
-import { cn, formatDate, formatCurrency, membershipColors, getInitials, whatsappLink, DAY_LABELS } from '@/lib/utils'
+import { cn, formatDate, formatCurrency, membershipColors, getInitials, whatsappLink, DAY_LABELS, phoneValidationError } from '@/lib/utils'
 import { disciplineLabel } from '@/lib/categories'
 import Pagination from '@/components/dashboard/Pagination'
 import toast from 'react-hot-toast'
@@ -298,6 +298,10 @@ export default function FightersPage() {
 
   async function saveFighterEdit() {
     if (!selected) return
+    if (editForm.phone) {
+      const err = phoneValidationError(editForm.phone)
+      if (err) { toast.error(err); return }
+    }
     setSavingEdit(true)
     const res = await fetch(`/api/members?id=${selected.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
@@ -310,6 +314,10 @@ export default function FightersPage() {
 
   async function addMember(e: React.FormEvent) {
     e.preventDefault()
+    if (addForm.phone) {
+      const err = phoneValidationError(addForm.phone)
+      if (err) { toast.error(err); return }
+    }
     const selectedClass = classes.find(c => c.id === addForm.classId)
     const res = await fetch('/api/members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       ...addForm,
