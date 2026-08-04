@@ -38,11 +38,17 @@ export async function GET(req: NextRequest) {
   // Overview: every active coach, their classes scheduled today, and monthly totals across all their classes
   const coaches = await prisma.coach.findMany({ where: { gymId: gym.id, isActive: true }, include: { classes: { where: { status: 'APPROVED' } } }, orderBy: { firstName: 'asc' } })
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+  const today = startOfDay(new Date())
+
+  // All of today's marks gym-wide, so we can tell — for any class — whether the
+  // normally-assigned coach checked in themselves, was marked absent, or was covered
+  // by someone else (and by whom).
+  const todaysMarksAll = await prisma.coachAttendance.findMany({ where: { date: today, class: { gymId: gym.id } }, include: { coach: true } })
+  const marksByClass = new Map<string, typeof todaysMarksAll>()
+  for (const m of todaysMarksAll) marksByClass.set(m.classId, [...(marksByClass.get(m.classId) || []), m])
 
   const roster = await Promise.all(coaches.map(async coach => {
     const todaysClasses = coach.classes.filter(isScheduledToday)
-    const todaysMarks = await prisma.coachAttendance.findMany({ where: { coachId: coach.id, date: startOfDay(new Date()) } })
-    const markedClassIds = new Set(todaysMarks.map(m => m.classId))
 
     let assigned = 0, attended = 0
     for (const cls of coach.classes) {
@@ -52,7 +58,17 @@ export async function GET(req: NextRequest) {
 
     return {
       coachId: coach.id, firstName: coach.firstName, lastName: coach.lastName,
-      todaysClasses: todaysClasses.map(c => ({ id: c.id, name: c.name, checkedIn: markedClassIds.has(c.id) })),
+      todaysClasses: todaysClasses.map(c => {
+        const marksForClass = marksByClass.get(c.id) || []
+        const ownMark = marksForClass.find(m => m.coachId === coach.id)
+        const coverMark = marksForClass.find(m => m.assignedCoachId === coach.id && m.coachId !== coach.id)
+        return {
+          id: c.id, name: c.name,
+          checkedIn: ownMark?.status === 'ATTENDED',
+          absent: ownMark?.status === 'ABSENT',
+          coveredBy: coverMark ? { id: coverMark.coach.id, name: `${coverMark.coach.firstName} ${coverMark.coach.lastName}` } : null,
+        }
+      }),
       assignedThisMonth: assigned, attendedThisMonth: attended, missedThisMonth: Math.max(0, assigned - attended),
     }
   }))
@@ -93,7 +109,7 @@ export async function POST(req: NextRequest) {
     // If the assigned coach already has a record for this session, remove it — they
     // must not receive attendance credit once a cover coach is assigned.
     if (assignedCoachId && assignedCoachId !== coverCoachId) {
-      await prisma.coachAttendance.deleteMany({ where: { coachId: assignedCoachId, classId, date } })
+      await prisma.coachAttendance.deleteMany({ where: { coachId: assignedCoachId, classId, date, status: 'ATTENDED' } })
     }
     const existingCover = await prisma.coachAttendance.findUnique({ where: { coachId_classId_date: { coachId: coverCoachId, classId, date } } })
     if (existingCover && existingCover.status === 'ATTENDED') {

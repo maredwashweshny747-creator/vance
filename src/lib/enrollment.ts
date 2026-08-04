@@ -2,6 +2,27 @@ import { prisma } from '@/lib/prisma'
 import { sessionsAllowedForCycle } from '@/lib/utils'
 
 /**
+ * How many sessions this enrollment allows in total. Private/session-based classes
+ * are bounded by the sessions purchased. Group classes use the enrollment's ACTUAL
+ * start->end span (not the class's nominal 30-day cycle) so a multi-month offer
+ * scales correctly — e.g. 2x/week over a 3-month (90-day) offer = 2 × 4 × 3 = 24,
+ * not the 1-month default of 8. This is the single source of truth for that math —
+ * both the expiry check and the fighters-page "remaining sessions" display use it,
+ * so they can never drift out of sync with each other again.
+ */
+export function sessionsAllowedForEnrollment(
+  enrollment: { startDate: Date | string; endDate: Date | string | null; sessionCount?: number | null },
+  cls: { daysOfWeek: string[]; durationDays: number; isOneTime?: boolean; type?: string }
+): number {
+  if (cls.type === 'PRIVATE') return enrollment.sessionCount || 0
+  if (cls.isOneTime) return 1
+  const spanDays = enrollment.endDate
+    ? Math.round((new Date(enrollment.endDate).getTime() - new Date(enrollment.startDate).getTime()) / 86400000)
+    : cls.durationDays
+  return sessionsAllowedForCycle(cls.daysOfWeek.length, spanDays)
+}
+
+/**
  * How many times a class has been scheduled to occur so far this month —
  * used as the "assigned sessions" a coach is expected to have taught.
  * One-time classes count as 1 (on their session date) or 0 (before/after it).
@@ -56,16 +77,7 @@ export async function checkAndExpireEnrollment(enrollment: { id: string; status:
   const attended = await prisma.classAttendance.count({
     where: { enrollmentId: enrollment.id, status: 'ATTENDED' },
   })
-  // Private/session-based classes are bounded by the sessions purchased, not a weekly schedule.
-  // Group classes use the enrollment's actual start->end span (not the class's nominal
-  // 30-day cycle) so a multi-month offer correctly scales the total — e.g. 2x/week over a
-  // 3-month (90-day) offer = 2 × 4 × 3 = 24, not the 1-month default.
-  const spanDays = enrollment.endDate
-    ? Math.round((new Date(enrollment.endDate).getTime() - new Date(enrollment.startDate).getTime()) / 86400000)
-    : cls.durationDays
-  const sessionsAllowed = cls.type === 'PRIVATE'
-    ? (enrollment.sessionCount || 0)
-    : cls.isOneTime ? 1 : sessionsAllowedForCycle(cls.daysOfWeek.length, spanDays)
+  const sessionsAllowed = sessionsAllowedForEnrollment(enrollment, cls)
   const sessionsUsedUp = sessionsAllowed > 0 && attended >= sessionsAllowed
 
   if (daysPassed || sessionsUsedUp) {

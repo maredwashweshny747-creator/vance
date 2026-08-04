@@ -16,7 +16,7 @@ interface Stats { checkIns: CheckIn[]; todayCount: number; weeklyCheckIns: numbe
 
 interface CoachRow {
   coachId: string; firstName: string; lastName: string
-  todaysClasses: { id: string; name: string; checkedIn: boolean }[]
+  todaysClasses: { id: string; name: string; checkedIn: boolean; absent?: boolean; coveredBy?: { id: string; name: string } | null }[]
   assignedThisMonth: number; attendedThisMonth: number; missedThisMonth: number
 }
 
@@ -57,6 +57,11 @@ export default function AttendancePage() {
   async function checkInCoach(coachId: string, classId: string, coverCoachId?: string) {
     const res = await fetch('/api/coach-attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coachId, classId, status: 'ATTENDED', coverCoachId }) })
     if (res.ok) { toast.success(coverCoachId ? 'Cover coach checked in' : 'Coach checked in'); loadCoaches(); setCoverPicker(null) } else { const d = await res.json().catch(()=>({})); toast.error(d.error || 'Failed') }
+  }
+
+  async function markAbsentCoach(coachId: string, classId: string) {
+    const res = await fetch('/api/coach-attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coachId, classId, status: 'ABSENT' }) })
+    if (res.ok) { toast('Marked absent — you can now assign a cover coach', { icon: '⚠️' }); loadCoaches() } else { const d = await res.json().catch(()=>({})); toast.error(d.error || 'Failed') }
   }
 
   const filtered = members.filter(m =>
@@ -230,11 +235,17 @@ export default function AttendancePage() {
                         <span className="text-dark-300 truncate flex-1">{cls.name}</span>
                         {cls.checkedIn ? (
                           <CheckCircle2 size={14} className="text-primary-400 flex-shrink-0"/>
+                        ) : cls.coveredBy ? (
+                          <span className="text-blue-400 flex-shrink-0 text-[11px]">Covered by {cls.coveredBy.name}</span>
+                        ) : cls.absent && canCheckInCoaches ? (
+                          <button onClick={() => setCoverPicker({ coachId: c.coachId, coachName: `${c.firstName} ${c.lastName}`, classId: cls.id, className: cls.name })}
+                            className="flex-shrink-0 px-2 py-1 bg-dark-600 border border-dark-500 text-dark-300 rounded-md hover:bg-dark-500 transition-colors">Assign Cover Coach</button>
+                        ) : cls.absent ? (
+                          <span className="text-crimson-400 flex-shrink-0 text-[11px]">Absent</span>
                         ) : canCheckInCoaches ? (
                           <div className="flex items-center gap-1 flex-shrink-0">
                             <button onClick={() => checkInCoach(c.coachId, cls.id)} className="px-2 py-1 bg-primary-400/10 border border-primary-400/20 text-primary-400 rounded-md hover:bg-primary-400/20 transition-colors">Check In</button>
-                            <button onClick={() => setCoverPicker({ coachId: c.coachId, coachName: `${c.firstName} ${c.lastName}`, classId: cls.id, className: cls.name })}
-                              className="px-2 py-1 bg-dark-600 border border-dark-500 text-dark-300 rounded-md hover:bg-dark-500 transition-colors">Assign Cover Coach</button>
+                            <button onClick={() => markAbsentCoach(c.coachId, cls.id)} className="px-2 py-1 bg-crimson-500/10 border border-crimson-500/20 text-crimson-400 rounded-md hover:bg-crimson-500/20 transition-colors">Mark Absent</button>
                           </div>
                         ) : (
                           <span className="text-dark-500 flex-shrink-0">Not checked in</span>

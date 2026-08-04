@@ -105,6 +105,7 @@ CREATE TABLE "Coach" (
     "specialties" TEXT,
     "bio" TEXT,
     "sessionRate" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "privateSessionRate" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -122,6 +123,7 @@ CREATE TABLE "CoachAttendance" (
     "method" TEXT NOT NULL DEFAULT 'MANUAL',
     "markedById" TEXT,
     "markedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "assignedCoachId" TEXT,
 
     CONSTRAINT "CoachAttendance_pkey" PRIMARY KEY ("id")
 );
@@ -154,6 +156,20 @@ CREATE TABLE "GymClass" (
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "GymClass_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "ClassOffer" (
+    "id" TEXT NOT NULL,
+    "classId" TEXT NOT NULL,
+    "months" INTEGER,
+    "sessions" INTEGER,
+    "price" DOUBLE PRECISION NOT NULL,
+    "label" TEXT,
+    "isActive" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "ClassOffer_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -327,6 +343,8 @@ CREATE TABLE "CoachPayrollRun" (
     "year" INTEGER NOT NULL,
     "sessionCount" INTEGER NOT NULL DEFAULT 0,
     "sessionRate" DOUBLE PRECISION NOT NULL DEFAULT 0,
+    "privateSessionCount" INTEGER NOT NULL DEFAULT 0,
+    "privateSessionRate" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "bonus" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "deductions" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "total" DOUBLE PRECISION NOT NULL DEFAULT 0,
@@ -404,6 +422,18 @@ CREATE TABLE "MemberProgress" (
     "recordedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "MemberProgress_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "FighterFeedback" (
+    "id" TEXT NOT NULL,
+    "gymId" TEXT NOT NULL,
+    "memberId" TEXT NOT NULL,
+    "message" TEXT NOT NULL,
+    "isRead" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "FighterFeedback_pkey" PRIMARY KEY ("id")
 );
 
 -- CreateTable
@@ -515,6 +545,9 @@ CREATE UNIQUE INDEX "PayrollRun_staffId_month_year_key" ON "PayrollRun"("staffId
 -- CreateIndex
 CREATE UNIQUE INDEX "CoachPayrollRun_coachId_month_year_key" ON "CoachPayrollRun"("coachId", "month", "year");
 
+-- CreateIndex
+CREATE INDEX "FighterFeedback_gymId_isRead_idx" ON "FighterFeedback"("gymId", "isRead");
+
 -- AddForeignKey
 ALTER TABLE "Account" ADD CONSTRAINT "Account_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
@@ -550,6 +583,9 @@ ALTER TABLE "GymClass" ADD CONSTRAINT "GymClass_branchId_fkey" FOREIGN KEY ("bra
 
 -- AddForeignKey
 ALTER TABLE "GymClass" ADD CONSTRAINT "GymClass_coachId_fkey" FOREIGN KEY ("coachId") REFERENCES "Coach"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "ClassOffer" ADD CONSTRAINT "ClassOffer_classId_fkey" FOREIGN KEY ("classId") REFERENCES "GymClass"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "ClassEnrollment" ADD CONSTRAINT "ClassEnrollment_memberId_fkey" FOREIGN KEY ("memberId") REFERENCES "Member"("id") ON DELETE CASCADE ON UPDATE CASCADE;
@@ -628,6 +664,12 @@ ALTER TABLE "StoreSale" ADD CONSTRAINT "StoreSale_itemId_fkey" FOREIGN KEY ("ite
 
 -- AddForeignKey
 ALTER TABLE "MemberProgress" ADD CONSTRAINT "MemberProgress_memberId_fkey" FOREIGN KEY ("memberId") REFERENCES "Member"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FighterFeedback" ADD CONSTRAINT "FighterFeedback_gymId_fkey" FOREIGN KEY ("gymId") REFERENCES "Gym"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "FighterFeedback" ADD CONSTRAINT "FighterFeedback_memberId_fkey" FOREIGN KEY ("memberId") REFERENCES "Member"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "WorkoutPlan" ADD CONSTRAINT "WorkoutPlan_gymId_fkey" FOREIGN KEY ("gymId") REFERENCES "Gym"("id") ON DELETE CASCADE ON UPDATE CASCADE;

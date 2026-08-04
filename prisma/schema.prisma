@@ -142,7 +142,8 @@ model Coach {
   photo       String?
   specialties String?  // JSON array, e.g. Boxing, Muay Thai, BJJ
   bio         String?
-  sessionRate Float    @default(0) // paid per session taught
+  sessionRate Float    @default(0) // paid per session taught (group classes)
+  privateSessionRate Float @default(0) // paid per private (1:1) session taught
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -224,8 +225,9 @@ model GymClass {
 model ClassOffer {
   id        String   @id @default(cuid())
   classId   String
-  months    Int      // billing duration in months, e.g. 2, 3, 6
-  price     Float    // total price for the whole offer duration
+  months    Int?     // billing duration in months, e.g. 2, 3, 6 — for GROUP classes
+  sessions  Int?     // preset session-pack size, e.g. 10 — for PRIVATE classes instead of months
+  price     Float    // total price for the whole offer (the package deal, not per-unit)
   label     String?  // optional display label, e.g. "Summer Special"
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
@@ -437,6 +439,8 @@ model CoachPayrollRun {
   year         Int
   sessionCount Int       @default(0)
   sessionRate  Float     @default(0)
+  privateSessionCount Int   @default(0)
+  privateSessionRate  Float @default(0)
   bonus        Float     @default(0)
   deductions   Float     @default(0)
   total        Float     @default(0)

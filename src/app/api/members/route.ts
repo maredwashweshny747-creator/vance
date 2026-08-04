@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionAndGym } from '@/lib/getGym'
-import { checkAndExpireEnrollment } from '@/lib/enrollment'
-import { sessionsAllowedForCycle, phoneValidationError } from '@/lib/utils'
+import { checkAndExpireEnrollment, sessionsAllowedForEnrollment } from '@/lib/enrollment'
+import { phoneValidationError } from '@/lib/utils'
 import { baseAmountForClass, applyDiscount } from '@/lib/payment'
 
 // Attaches {xName} to rows by resolving the plain-string user id fields.
@@ -22,15 +22,16 @@ async function withUserNames<T extends Record<string, any>>(rows: T[], idFields:
 async function attachMonthSummaries(enrollments: any[]) {
   const withNames = await withUserNames(enrollments, ['addedById', 'lastActionById'])
   return Promise.all(withNames.map(async (e: any) => {
-    const now = new Date()
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+    // Scoped to THIS enrollment's own current cycle (its startDate), not the calendar
+    // month — a multi-month offer's "remaining" must reflect the whole cycle's usage,
+    // not just whatever's happened since the 1st of this month.
+    const cycleStart = new Date(e.startDate)
     const [attended, excused, absent] = await Promise.all([
-      prisma.classAttendance.count({ where: { enrollmentId: e.id, date: { gte: monthStart }, status: 'ATTENDED' } }),
-      prisma.classAttendance.count({ where: { enrollmentId: e.id, date: { gte: monthStart }, status: 'EXCUSED' } }),
-      prisma.classAttendance.count({ where: { enrollmentId: e.id, date: { gte: monthStart }, status: 'ABSENT' } }),
+      prisma.classAttendance.count({ where: { enrollmentId: e.id, date: { gte: cycleStart }, status: 'ATTENDED' } }),
+      prisma.classAttendance.count({ where: { enrollmentId: e.id, date: { gte: cycleStart }, status: 'EXCUSED' } }),
+      prisma.classAttendance.count({ where: { enrollmentId: e.id, date: { gte: cycleStart }, status: 'ABSENT' } }),
     ])
-    const sessionsAllowed = e.class?.type === 'PRIVATE' ? (e.sessionCount || 0)
-      : e.class?.isOneTime ? 1 : sessionsAllowedForCycle(e.class?.daysOfWeek?.length || 0, e.class?.durationDays || 30)
+    const sessionsAllowed = sessionsAllowedForEnrollment(e, e.class || {})
     const remaining = Math.max(0, sessionsAllowed - attended)
     return { ...e, monthSummary: { attended, excused, absent, remaining, sessionsAllowed } }
   }))
@@ -49,7 +50,7 @@ export async function GET(req: NextRequest) {
     const member = await prisma.member.findFirst({
       where: { id, gymId: gym.id },
       include: {
-        enrollments: { include: { class: { include: { offers: { where: { isActive: true }, orderBy: { months: 'asc' } } } } }, orderBy: { createdAt: 'asc' } },
+        enrollments: { include: { class: { include: { offers: { where: { isActive: true }, orderBy: { createdAt: 'asc' } } } } }, orderBy: { createdAt: 'asc' } },
         payments: { orderBy: { createdAt: 'desc' }, take: 10 },
       },
     })
@@ -70,28 +71,33 @@ export async function GET(req: NextRequest) {
 
   const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
   const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '25', 10) || 25))
+  const status = searchParams.get('status')
 
   const where = {
     gymId: gym.id,
     ...(search ? { OR: [
-      { firstName: { contains: search } }, { lastName: { contains: search } }, { email: { contains: search } },
-      { phone: { contains: search } }, { parentPhone: { contains: search } }, { fighterId: { contains: search } },
+      { firstName: { contains: search, mode: 'insensitive' as const } },
+      { lastName: { contains: search, mode: 'insensitive' as const } },
+      { email: { contains: search, mode: 'insensitive' as const } },
+      { phone: { contains: search } }, // phone/fighterId are digits — case-insensitivity doesn't apply
+      { parentPhone: { contains: search } },
+      { fighterId: { contains: search, mode: 'insensitive' as const } },
     ] } : {}),
   }
 
-  const [total, members] = await Promise.all([
-    prisma.member.count({ where }),
-    prisma.member.findMany({
-      where,
-      include: { enrollments: { include: { class: true } } },
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    }),
-  ])
+  // Status (Active/Frozen/Expired/...) isn't a stored column — it's derived live from each
+  // enrollment's expiry check — so it can't be pushed into the DB `where` clause. We fetch
+  // every search-match, compute each member's real status, THEN filter and paginate in
+  // memory. This trades DB-level pagination for correctness: filtering "Expired" now
+  // actually returns only expired fighters instead of silently ignoring the filter.
+  const allMatching = await prisma.member.findMany({
+    where,
+    include: { enrollments: { include: { class: true } } },
+    orderBy: { createdAt: 'desc' },
+  })
 
-  const results = []
-  for (const m of members) {
+  const withStatus = []
+  for (const m of allMatching) {
     // checkAndExpireEnrollment already tells us the (possibly just-updated) status —
     // no need to re-fetch the member's enrollments a second time to find out.
     for (const e of m.enrollments) (e as any).status = await checkAndExpireEnrollment(e, e.class)
@@ -99,10 +105,14 @@ export async function GET(req: NextRequest) {
       : m.enrollments.some(e => e.status === 'FROZEN') ? 'FROZEN'
       : m.enrollments.some(e => e.status === 'EXPIRED') ? 'EXPIRED'
       : m.enrollments.length > 0 ? 'CANCELED' : 'NO_PLAN'
-    results.push({ ...m, overallStatus })
+    withStatus.push({ ...m, overallStatus })
   }
 
-  return NextResponse.json({ data: results, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) })
+  const filtered = status && status !== 'ALL' ? withStatus.filter(m => m.overallStatus === status) : withStatus
+  const total = filtered.length
+  const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
+
+  return NextResponse.json({ data: paged, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) })
 }
 
 export async function POST(req: NextRequest) {

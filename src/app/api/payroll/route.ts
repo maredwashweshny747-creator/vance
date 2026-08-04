@@ -4,14 +4,15 @@ import { getSessionAndGym, isAdmin } from '@/lib/getGym'
 
 // Counts sessions a coach has actually delivered (attended marks logged against their
 // approved classes) in a given month/year — one ATTENDED mark = one session taught.
-async function countSessions(gymId: string, coachId: string, month: number, year: number) {
+// Split by class type since group and private (1:1) sessions are paid at different rates.
+async function countSessions(gymId: string, coachId: string, month: number, year: number, classType: 'GROUP' | 'PRIVATE') {
   const start = new Date(year, month - 1, 1)
   const end   = new Date(year, month, 1)
   return prisma.classAttendance.count({
     where: {
       status: 'ATTENDED',
       date: { gte: start, lt: end },
-      class: { gymId, coachId, status: 'APPROVED' },
+      class: { gymId, coachId, status: 'APPROVED', type: classType === 'PRIVATE' ? 'PRIVATE' : { not: 'PRIVATE' } },
     },
   })
 }
@@ -85,21 +86,26 @@ export async function GET(req: NextRequest) {
     const existingRuns = await prisma.coachPayrollRun.findMany({ where: { gymId: gym.id, month, year } })
 
     const rows = await Promise.all(coaches.map(async coach => {
-      const liveSessionCount = await countSessions(gym.id, coach.id, month, year)
+      const liveSessionCount = await countSessions(gym.id, coach.id, month, year, 'GROUP')
+      const livePrivateSessionCount = await countSessions(gym.id, coach.id, month, year, 'PRIVATE')
       const totalPlayersAttended = await countPlayersAttended(gym.id, coach.id)
       const run = existingRuns.find(r => r.coachId === coach.id)
+      const liveTotal = Math.round((liveSessionCount * coach.sessionRate + livePrivateSessionCount * coach.privateSessionRate) * 100) / 100
       return {
         coachId: coach.id,
         firstName: coach.firstName,
         lastName: coach.lastName,
         sessionRate: coach.sessionRate,
+        privateSessionRate: coach.privateSessionRate,
         sessionCount: run ? run.sessionCount : liveSessionCount,
+        privateSessionCount: run ? run.privateSessionCount : livePrivateSessionCount,
         liveSessionCount,
+        livePrivateSessionCount,
         totalPlayersAttended,
         runId: run?.id || null,
         bonus: run?.bonus || 0,
         deductions: run?.deductions || 0,
-        total: run ? run.total : Math.round((liveSessionCount * coach.sessionRate) * 100) / 100,
+        total: run ? run.total : liveTotal,
         status: run?.status || 'DRAFT',
         paidAt: run?.paidAt || null,
         notes: run?.notes || '',
@@ -177,17 +183,18 @@ export async function POST(req: NextRequest) {
       const coach = await prisma.coach.findFirst({ where: { id: body.coachId, gymId: gym.id } })
       if (!coach) return NextResponse.json({ error: 'Coach not found' }, { status: 404 })
 
-      const sessionCount = await countSessions(gym.id, coach.id, month, year)
+      const sessionCount = await countSessions(gym.id, coach.id, month, year, 'GROUP')
+      const privateSessionCount = await countSessions(gym.id, coach.id, month, year, 'PRIVATE')
       const bonus        = Number(body.bonus)       || 0
       const deductions    = Number(body.deductions)  || 0
-      const total         = Math.round((sessionCount * coach.sessionRate + bonus - deductions) * 100) / 100
+      const total         = Math.round((sessionCount * coach.sessionRate + privateSessionCount * coach.privateSessionRate + bonus - deductions) * 100) / 100
 
       const run = await prisma.coachPayrollRun.upsert({
         where: { coachId_month_year: { coachId: coach.id, month, year } },
-        update: { sessionCount, sessionRate: coach.sessionRate, bonus, deductions, total, notes: body.notes || null },
+        update: { sessionCount, sessionRate: coach.sessionRate, privateSessionCount, privateSessionRate: coach.privateSessionRate, bonus, deductions, total, notes: body.notes || null },
         create: {
           gymId: gym.id, coachId: coach.id, month, year,
-          sessionCount, sessionRate: coach.sessionRate, bonus, deductions, total,
+          sessionCount, sessionRate: coach.sessionRate, privateSessionCount, privateSessionRate: coach.privateSessionRate, bonus, deductions, total,
           status: 'PENDING', notes: body.notes || null,
         },
       })

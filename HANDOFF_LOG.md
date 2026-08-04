@@ -32,7 +32,101 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
-## 2026-08-03 (4) — Claude (chat) — Cover coach, WhatsApp fix, portal fixes, feedback system, membership offers, remaining-sessions fix, class switching rewrite
+## 2026-08-04 — Claude (chat) — Bug-fix round: photo zoom on Fighters page, private-class offers, offer remaining-sessions bug, search/filter bugs, cover-coach gating, payroll split
+
+**Changed:**
+- **Fighter photo zoom (Fighters page, not just Portal)**: `Avatar` component
+  now accepts an `onClick`, wired on both the fighters table row and the
+  detail panel — opens a lightbox. Click stops propagation so it doesn't
+  also trigger row-select.
+- **Offers on PRIVATE classes**: `ClassOffer.months` is now nullable and a
+  new `ClassOffer.sessions` field was added — GROUP classes use `months`,
+  PRIVATE classes use `sessions` (a preset session-pack price). Classes
+  page offers editor, class API (create/edit), and the fighters-page
+  `DiscountAndPricingStep` all updated to branch on class type.
+- **Fixed the reported 8-vs-24 remaining-sessions bug**: root cause was
+  that `attachMonthSummaries` in `/api/members` had its own separate
+  "remaining sessions" calculation that still read `e.class.durationDays`
+  (always the class's nominal 30-day cycle) instead of the enrollment's
+  actual offer-extended span — so a 3-month/90-day offer displayed as if
+  it were a 1-month cycle (8 instead of 24). Extracted a single shared
+  `sessionsAllowedForEnrollment()` in `src/lib/enrollment.ts` — both the
+  expiry check and this display now call the same function, so they
+  cannot drift out of sync again. Also fixed a secondary bug in the same
+  function: attendance was being counted from the calendar month's start
+  instead of the enrollment's own cycle start, which would have under-
+  counted "attended" (and over-stated "remaining") for any offer that
+  spans a month boundary.
+- **Fighters search/filter fixed**: two real, separate bugs. (1) Search
+  used Prisma's default case-sensitive `contains` — "adam" didn't match
+  "Adam" on Postgres. Added `mode: 'insensitive'` to the text fields
+  (kept case-sensitive for phone/fighterId, which are digits anyway).
+  (2) The status filter (`?status=EXPIRED` etc.) was sent by the frontend
+  but the backend never read it at all — every filter silently returned
+  everyone. Since status is derived live per-enrollment (not a stored
+  column), it can't be pushed into the DB `where` clause; the endpoint
+  now fetches all search-matches, computes each member's live status,
+  filters, *then* paginates in memory. Trade-off: fighters list is no
+  longer DB-level paginated when a search is active, only after the
+  fetch — acceptable at typical gym-roster scale, flagged here in case
+  it ever needs revisiting for a very large roster.
+- **Cover coach flow gated properly**: "Assign Cover Coach" now only
+  appears after a coach is explicitly marked **Absent** (new "Mark
+  Absent" button next to Check In) — it wasn't gated at all before. The
+  roster GET now returns `absent`/`coveredBy` per class instead of just
+  a boolean `checkedIn`, computed gym-wide per (classId, date) so an
+  absent coach's card shows "Absent" (or "Covered by X" once someone
+  takes over) rather than still offering to check themselves in.
+- **Coach payroll split + coaches now editable**: `Coach.privateSessionRate`
+  added (group `sessionRate` was the only rate that existed before).
+  `countSessions()` now takes a class-type filter; both the live payroll
+  view and the finalized `CoachPayrollRun` (which gained
+  `privateSessionCount`/`privateSessionRate` columns) compute
+  `total = groupSessions × sessionRate + privateSessions × privateSessionRate`
+  instead of one blended rate. **Coaches/receptionists were not editable
+  at all after creation before this** — `/api/staff-accounts` gained a
+  PATCH (name, and for coaches: both rates + specialties); Settings page
+  gained an Edit button/modal per team member and a second rate field on
+  the create form. Payroll page table gained matching Rate/Private and
+  Private Sessions columns.
+
+**Why:** five user-reported bugs plus one longstanding gap (coaches were
+create-only, no way to fix a typo or adjust a rate without touching the
+DB directly) found while addressing item 6's "make the coach editable."
+
+**Watch out for:**
+- Fighters list search+status-filter is now correctness-first over
+  performance — see the DB-pagination trade-off note above.
+- `sessionsAllowedForEnrollment` is now the *only* place this math should
+  ever live — if a future change needs different remaining-sessions
+  logic, change it there, not in a second inline copy.
+- `ClassOffer.months` is nullable now (career use `sessions` instead for
+  PRIVATE offers) — any raw SQL or reporting query assuming `months` is
+  always set needs a null-check.
+- New/changed schema this round: `Coach.privateSessionRate`,
+  `ClassOffer.sessions` (+ `months` now nullable),
+  `CoachPayrollRun.privateSessionCount`/`privateSessionRate`,
+  `CoachAttendance` roster shape (API response only, no schema change
+  needed there beyond last round's `assignedCoachId`). Migration
+  required.
+- Did not touch the initial "add fighter with class" flow's offer
+  support (`/api/members` POST) — it still doesn't accept `offerId` at
+  all, only the "sign into a class"/"renew" endpoints do. Not reported
+  as broken this round, but worth closing that gap if a receptionist
+  ever wants to apply an offer at the moment of first creating a fighter
+  record instead of as a follow-up "add class" action.
+
+**Verified with:** `tsc --noEmit` in the working directory AND an
+isolated re-extraction with `node_modules` symlinked in — identical
+result both places (same single pre-existing unrelated `TS2322`, zero
+new errors). Did not have DB access in this sandbox to actually replay
+the "3-month offer → 24 remaining" scenario end-to-end — the fix is
+verified by code inspection (the formula and its inputs are now
+identical to the already-fixed `checkAndExpireEnrollment` path from the
+previous session), but a live re-test of that exact scenario is worth
+doing before considering this closed.
+
+---
 
 **Changed:**
 - **Cover coach**: `CoachAttendance.assignedCoachId` added — `coachId` is

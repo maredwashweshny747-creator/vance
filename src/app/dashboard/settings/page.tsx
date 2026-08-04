@@ -2,12 +2,12 @@
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Settings, User, Users, Plus, Trash2, Eye, EyeOff, X, ShieldCheck, Shield, Swords } from 'lucide-react'
+import { Settings, User, Users, Plus, Trash2, Eye, EyeOff, X, ShieldCheck, Shield, Swords, Pencil } from 'lucide-react'
 import { cn, getInitials, formatCurrency } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
 interface GymSettings { name: string; address: string; phone: string; email: string; currency: string; timezone: string; whatsappMessageTemplate: string }
-interface TeamAccount { id: string; name: string; email: string; role: string; createdAt: string; coach?: { sessionRate: number; specialties?: string } | null }
+interface TeamAccount { id: string; name: string; email: string; role: string; createdAt: string; coach?: { sessionRate: number; privateSessionRate?: number; specialties?: string } | null }
 
 export default function SettingsPage() {
   const { data: session } = useSession()
@@ -20,7 +20,10 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [showAddTeam, setShowAddTeam] = useState(false)
   const [showPw, setShowPw] = useState(false)
-  const [teamForm, setTeamForm] = useState({ name:'', email:'', password:'', role:'RECEPTIONIST', sessionRate:20, specialties:'' })
+  const [teamForm, setTeamForm] = useState({ name:'', email:'', password:'', role:'RECEPTIONIST', sessionRate:20, privateSessionRate:30, specialties:'' })
+  const [editTeamMember, setEditTeamMember] = useState<TeamAccount | null>(null)
+  const [editForm, setEditForm] = useState({ name:'', sessionRate:0, privateSessionRate:0, specialties:'' })
+  const [savingEdit, setSavingEdit] = useState(false)
 
   useEffect(() => {
     fetch('/api/settings').then(r => r.json()).then(d => {
@@ -47,8 +50,25 @@ export default function SettingsPage() {
       toast.success(`${teamForm.role === 'COACH' ? 'Coach' : 'Receptionist'} account created for ${teamForm.name}`)
       setTeam(prev => [data, ...prev])
       setShowAddTeam(false)
-      setTeamForm({ name:'', email:'', password:'', role:'RECEPTIONIST', sessionRate:20, specialties:'' })
+      setTeamForm({ name:'', email:'', password:'', role:'RECEPTIONIST', sessionRate:20, privateSessionRate:30, specialties:'' })
     } else toast.error(data.error || 'Failed')
+  }
+
+  function openEditTeamMember(t: TeamAccount) {
+    setEditTeamMember(t)
+    setEditForm({ name: t.name, sessionRate: t.coach?.sessionRate || 0, privateSessionRate: t.coach?.privateSessionRate || 0, specialties: t.coach?.specialties || '' })
+  }
+
+  async function saveTeamMemberEdit() {
+    if (!editTeamMember) return
+    setSavingEdit(true)
+    const res = await fetch(`/api/staff-accounts?id=${editTeamMember.id}`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(editForm) })
+    setSavingEdit(false)
+    if (res.ok) {
+      toast.success('Updated')
+      setTeam(prev => prev.map(t => t.id === editTeamMember.id ? { ...t, name: editForm.name, coach: t.coach ? { ...t.coach, sessionRate: editForm.sessionRate, privateSessionRate: editForm.privateSessionRate, specialties: editForm.specialties } : t.coach } : t))
+      setEditTeamMember(null)
+    } else { const d = await res.json().catch(()=>({})); toast.error(d.error || 'Failed to save') }
   }
 
   async function removeTeamMember(id: string, name: string) {
@@ -177,13 +197,17 @@ export default function SettingsPage() {
                         <span className={cn('text-xs px-2 py-0.5 rounded-full border', isCoachAcct ? 'bg-crimson-400/10 text-crimson-400 border-crimson-400/20' : 'bg-blue-400/10 text-blue-400 border-blue-400/20')}>
                           {isCoachAcct ? 'Coach' : 'Receptionist'}
                         </span>
-                        {isCoachAcct && s.coach && <span className="text-xs text-dark-400">{formatCurrency(s.coach.sessionRate)}/session</span>}
+                        {isCoachAcct && s.coach && <span className="text-xs text-dark-400">{formatCurrency(s.coach.sessionRate)}/session · {formatCurrency(s.coach.privateSessionRate || 0)}/private</span>}
                       </div>
                       <div className="text-dark-400 text-xs">{s.email}</div>
                     </div>
                     <div className="text-dark-600 text-xs flex-shrink-0">
                       Added {new Date(s.createdAt).toLocaleDateString()}
                     </div>
+                    <button onClick={() => openEditTeamMember(s)}
+                      className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-primary-400/10 hover:text-primary-400 text-dark-600 transition-all flex-shrink-0">
+                      <Pencil size={14}/>
+                    </button>
                     <button onClick={() => removeTeamMember(s.id, s.name)}
                       className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-crimson-500/10 hover:text-crimson-400 text-dark-600 transition-all flex-shrink-0">
                       <Trash2 size={14}/>
@@ -223,7 +247,10 @@ export default function SettingsPage() {
                 <div><label className="label">Email</label><input type="email" value={teamForm.email} onChange={e=>setTeamForm(f=>({...f,email:e.target.value}))} required className="input" placeholder="dana@yourclub.com"/></div>
                 {teamForm.role === 'COACH' && (
                   <>
-                    <div><label className="label">Rate Per Session ({gymData.currency})</label><input type="number" min={0} step={0.01} value={teamForm.sessionRate} onChange={e=>setTeamForm(f=>({...f,sessionRate:+e.target.value}))} className="input"/></div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div><label className="label">Rate / Session ({gymData.currency})</label><input type="number" min={0} step={0.01} value={teamForm.sessionRate} onChange={e=>setTeamForm(f=>({...f,sessionRate:+e.target.value}))} className="input"/></div>
+                      <div><label className="label">Rate / Private Session ({gymData.currency})</label><input type="number" min={0} step={0.01} value={teamForm.privateSessionRate} onChange={e=>setTeamForm(f=>({...f,privateSessionRate:+e.target.value}))} className="input"/></div>
+                    </div>
                     <div><label className="label">Specialties (optional)</label><input value={teamForm.specialties} onChange={e=>setTeamForm(f=>({...f,specialties:e.target.value}))} className="input" placeholder="Boxing, Muay Thai"/></div>
                   </>
                 )}
@@ -245,6 +272,35 @@ export default function SettingsPage() {
                   <button type="submit" className="btn-primary flex-1 justify-center">Create Account</button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit team member */}
+      <AnimatePresence>
+        {editTeamMember && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setEditTeamMember(null)}>
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()} className="bg-dark-800 border border-dark-600 rounded-2xl p-6 w-full max-w-sm space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-display text-xl text-white">EDIT {editTeamMember.role === 'COACH' ? 'COACH' : 'RECEPTIONIST'}</h3>
+                <button onClick={() => setEditTeamMember(null)} className="text-dark-400 hover:text-white"><X size={18}/></button>
+              </div>
+              <div><label className="label">Full Name</label><input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} className="input" /></div>
+              {editTeamMember.role === 'COACH' && (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><label className="label">Rate / Session</label><input type="number" min={0} step={0.01} value={editForm.sessionRate} onChange={e => setEditForm(f => ({ ...f, sessionRate: +e.target.value }))} className="input" /></div>
+                    <div><label className="label">Rate / Private Session</label><input type="number" min={0} step={0.01} value={editForm.privateSessionRate} onChange={e => setEditForm(f => ({ ...f, privateSessionRate: +e.target.value }))} className="input" /></div>
+                  </div>
+                  <div><label className="label">Specialties</label><input value={editForm.specialties} onChange={e => setEditForm(f => ({ ...f, specialties: e.target.value }))} className="input" placeholder="Boxing, Muay Thai" /></div>
+                </>
+              )}
+              <div className="flex gap-3 pt-1">
+                <button onClick={() => setEditTeamMember(null)} className="btn-ghost flex-1 justify-center">Cancel</button>
+                <button onClick={saveTeamMemberEdit} disabled={savingEdit} className="btn-primary flex-1 justify-center disabled:opacity-50">{savingEdit ? 'Saving…' : 'Save'}</button>
+              </div>
             </motion.div>
           </div>
         )}

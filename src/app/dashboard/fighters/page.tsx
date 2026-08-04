@@ -12,7 +12,7 @@ import { disciplineLabel } from '@/lib/categories'
 import Pagination from '@/components/dashboard/Pagination'
 import toast from 'react-hot-toast'
 
-interface ClassInfo { id: string; name: string; category?: string | null; daysOfWeek: string[]; price: number; durationDays: number; status: string; type?: string; offers?: { id: string; months: number; price: number; label?: string | null }[] }
+interface ClassInfo { id: string; name: string; category?: string | null; daysOfWeek: string[]; price: number; durationDays: number; status: string; type?: string; offers?: { id: string; months?: number | null; sessions?: number | null; price: number; label?: string | null }[] }
 interface MonthSummary { attended: number; excused: number; absent: number; remaining: number; sessionsAllowed: number }
 interface Enrollment {
   id: string; classId: string; class: ClassInfo; status: string
@@ -62,8 +62,12 @@ function resizeImage(file: File, maxSize = 400, quality = 0.85): Promise<string>
   })
 }
 
-function Avatar({ photo, name, size = 40 }: { photo?: string | null; name: string; size?: number }) {
-  if (photo) return <img src={photo} alt={name} className="rounded-full object-cover flex-shrink-0" style={{ width: size, height: size }} />
+function Avatar({ photo, name, size = 40, onClick }: { photo?: string | null; name: string; size?: number; onClick?: () => void }) {
+  if (photo) return (
+    <img src={photo} alt={name} onClick={onClick ? (e) => { e.stopPropagation(); onClick() } : undefined}
+      className={cn('rounded-full object-cover flex-shrink-0', onClick && 'cursor-zoom-in')}
+      style={{ width: size, height: size }} />
+  )
   return (
     <div className="rounded-full bg-primary-400/20 border border-primary-400/30 flex items-center justify-center text-primary-400 font-bold flex-shrink-0"
       style={{ width: size, height: size, fontSize: size * 0.34 }}>
@@ -172,13 +176,13 @@ function DiscountAndPricingStep({
 
   return (
     <div className="space-y-3 bg-dark-750 border border-dark-600 rounded-xl p-3">
-      {!isPrivate && offers.length > 0 && onOfferId && (
+      {offers.length > 0 && onOfferId && (
         <div>
           <label className="label">Subscription Type</label>
           <div className="grid grid-cols-2 gap-1.5 mb-2">
             <button type="button" onClick={() => onOfferId('')}
               className={cn('py-1.5 rounded-lg text-xs font-medium border transition-all', !offerId ? 'bg-primary-400/10 border-primary-400/30 text-primary-400' : 'border-dark-600 text-dark-400')}>
-              Regular Monthly
+              {isPrivate ? 'Custom Sessions' : 'Regular Monthly'}
             </button>
             <button type="button" onClick={() => onOfferId(offers[0].id)}
               className={cn('py-1.5 rounded-lg text-xs font-medium border transition-all', offerId ? 'bg-primary-400/10 border-primary-400/30 text-primary-400' : 'border-dark-600 text-dark-400')}>
@@ -187,12 +191,12 @@ function DiscountAndPricingStep({
           </div>
           {offerId && (
             <select value={offerId} onChange={e => onOfferId(e.target.value)} className="input">
-              {offers.map(o => <option key={o.id} value={o.id}>{o.label ? `${o.label} — ` : ''}{o.months} months for {formatCurrency(o.price)}</option>)}
+              {offers.map(o => <option key={o.id} value={o.id}>{o.label ? `${o.label} — ` : ''}{o.months ? `${o.months} months` : `${o.sessions} sessions`} for {formatCurrency(o.price)}</option>)}
             </select>
           )}
         </div>
       )}
-      {isPrivate && (
+      {isPrivate && !offerId && (
         <div>
           <label className="label">Number of Sessions</label>
           <input type="number" min={1} value={sessionCount || 1} onChange={e => onSessionCount(Math.max(1, +e.target.value))} className="input" />
@@ -264,6 +268,7 @@ export default function FightersPage() {
   const [switchToClassId, setSwitchToClassId] = useState('')
   const [switching, setSwitching] = useState(false)
   const [qrOpenFor, setQrOpenFor] = useState<string | null>(null)
+  const [photoZoom, setPhotoZoom] = useState<{ photo: string; name: string } | null>(null)
   const [whatsappTemplate, setWhatsappTemplate] = useState('')
   const [editingFighter, setEditingFighter] = useState(false)
   const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '', phone: '', parentPhone: '', birthYear: '', branchId: '', notes: '' })
@@ -458,7 +463,8 @@ export default function FightersPage() {
                   <td className="px-5 py-3.5 text-dark-400 text-xs font-mono">{m.fighterId}</td>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
-                      <Avatar photo={m.photo} name={`${m.firstName} ${m.lastName}`} size={36} />
+                      <Avatar photo={m.photo} name={`${m.firstName} ${m.lastName}`} size={36}
+                        onClick={m.photo ? (() => setPhotoZoom({ photo: m.photo!, name: `${m.firstName} ${m.lastName}` })) : undefined} />
                       <div>
                         <div className="text-white text-sm font-medium">{m.firstName} {m.lastName}</div>
                         <div className="text-dark-500 text-xs">{m.email || m.phone || '—'}</div>
@@ -563,7 +569,8 @@ export default function FightersPage() {
               <div className="p-6 space-y-6">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center gap-3">
-                    <Avatar photo={selected.photo} name={`${selected.firstName} ${selected.lastName}`} size={56} />
+                    <Avatar photo={selected.photo} name={`${selected.firstName} ${selected.lastName}`} size={56}
+                      onClick={selected.photo ? (() => setPhotoZoom({ photo: selected.photo!, name: `${selected.firstName} ${selected.lastName}` })) : undefined} />
                     <div>
                       <h2 className="font-display text-2xl text-white tracking-wide">{selected.firstName.toUpperCase()} {selected.lastName.toUpperCase()}</h2>
                       <p className="text-primary-400 text-xs font-mono tracking-widest">ID {selected.fighterId}</p>
@@ -867,6 +874,19 @@ export default function FightersPage() {
                   {switching ? 'Switching…' : 'Confirm Switch'}
                 </button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Photo zoom */}
+      <AnimatePresence>
+        {photoZoom && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm" onClick={() => setPhotoZoom(null)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative max-w-lg w-full">
+              <button onClick={() => setPhotoZoom(null)} className="absolute -top-10 right-0 text-white/80 hover:text-white"><X size={24}/></button>
+              <img src={photoZoom.photo} alt={photoZoom.name} className="w-full h-auto rounded-2xl object-contain" onClick={e => e.stopPropagation()} />
+              <p className="text-center text-white/80 text-sm mt-3">{photoZoom.name}</p>
             </motion.div>
           </div>
         )}

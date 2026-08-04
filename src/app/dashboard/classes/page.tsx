@@ -21,7 +21,7 @@ const BLANK_FORM = {
   name: '', description: '', category: 'MMA_ADULTS', type: 'GROUP', daysOfWeek: [] as string[],
   isOneTime: false, sessionDate: new Date().toISOString().split('T')[0],
   startTimeOfDay: '18:00', duration: 60, capacity: 20, price: 59, durationDays: 30, color: '#ffc700', coachId: '',
-  offers: [] as { months: number; price: number; label: string }[],
+  offers: [] as { months: number; sessions: number; price: number; label: string }[],
 }
 
 export default function ClassesPage() {
@@ -84,7 +84,7 @@ export default function ClassesPage() {
       startTimeOfDay: cls.startTimeOfDay || '18:00',
       duration: cls.duration, capacity: cls.capacity, price: cls.price, durationDays: cls.durationDays,
       color: cls.color || '#ffc700', coachId: cls.coachId || '',
-      offers: (cls.offers || []).map((o: any) => ({ months: o.months, price: o.price, label: o.label || '' })),
+      offers: (cls.offers || []).map((o: any) => ({ months: o.months || 0, sessions: o.sessions || 0, price: o.price, label: o.label || '' })),
     })
     setShowForm(true)
   }
@@ -244,7 +244,7 @@ export default function ClassesPage() {
                 {cls.offers?.length > 0 && (
                   <div className="flex flex-wrap gap-1 mt-2">
                     {cls.offers.map((o: any) => (
-                      <span key={o.id} className="text-[10px] px-1.5 py-0.5 rounded bg-primary-400/10 text-primary-400 border border-primary-400/20 font-mono">{o.months}mo · {formatCurrency(o.price)}</span>
+                      <span key={o.id} className="text-[10px] px-1.5 py-0.5 rounded bg-primary-400/10 text-primary-400 border border-primary-400/20 font-mono">{o.months ? `${o.months}mo` : `${o.sessions} sessions`} · {formatCurrency(o.price)}</span>
                     ))}
                   </div>
                 )}
@@ -377,16 +377,27 @@ export default function ClassesPage() {
                   <div><label className="label">Billing cycle length (days)</label><input type="number" value={form.durationDays} onChange={e => setForm(f=>({...f,durationDays:+e.target.value}))} min={1} className="input"/></div>
                 )}
 
-                {isAdmin && form.type !== 'PRIVATE' && !form.isOneTime && (
+                {isAdmin && (form.type === 'PRIVATE' || !form.isOneTime) && (
                   <div>
-                    <label className="label">Promotional Offers (multi-month packages)</label>
+                    <label className="label">Promotional Offers ({form.type === 'PRIVATE' ? 'session packages' : 'multi-month packages'})</label>
                     <div className="space-y-2">
                       {form.offers.map((o, i) => (
                         <div key={i} className="flex items-center gap-2">
-                          <input type="number" min={1} value={o.months} placeholder="Months"
-                            onChange={e => setForm(f => ({ ...f, offers: f.offers.map((x,j) => j===i ? {...x, months:+e.target.value} : x) }))}
-                            className="input w-20" />
-                          <span className="text-dark-500 text-xs">mo</span>
+                          {form.type === 'PRIVATE' ? (
+                            <>
+                              <input type="number" min={1} value={o.sessions} placeholder="Sessions"
+                                onChange={e => setForm(f => ({ ...f, offers: f.offers.map((x,j) => j===i ? {...x, sessions:+e.target.value} : x) }))}
+                                className="input w-24" />
+                              <span className="text-dark-500 text-xs">sessions</span>
+                            </>
+                          ) : (
+                            <>
+                              <input type="number" min={1} value={o.months} placeholder="Months"
+                                onChange={e => setForm(f => ({ ...f, offers: f.offers.map((x,j) => j===i ? {...x, months:+e.target.value} : x) }))}
+                                className="input w-20" />
+                              <span className="text-dark-500 text-xs">mo</span>
+                            </>
+                          )}
                           <input type="number" min={0} step={0.01} value={o.price} placeholder="Price"
                             onChange={e => setForm(f => ({ ...f, offers: f.offers.map((x,j) => j===i ? {...x, price:+e.target.value} : x) }))}
                             className="input flex-1" />
@@ -397,7 +408,7 @@ export default function ClassesPage() {
                             className="p-2 rounded-lg text-dark-500 hover:text-crimson-400"><Trash2 size={14}/></button>
                         </div>
                       ))}
-                      <button type="button" onClick={() => setForm(f => ({ ...f, offers: [...f.offers, { months: 3, price: form.price*3, label: '' }] }))}
+                      <button type="button" onClick={() => setForm(f => ({ ...f, offers: [...f.offers, form.type === 'PRIVATE' ? { months: 0, sessions: 10, price: form.price*10, label: '' } : { months: 3, sessions: 0, price: form.price*3, label: '' }] }))}
                         className="text-primary-400 text-xs font-semibold hover:text-primary-300">+ Add offer</button>
                     </div>
                   </div>

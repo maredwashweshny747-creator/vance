@@ -29,18 +29,24 @@ export async function POST(req: NextRequest) {
     if (existingActive) return NextResponse.json({ error: `${member.firstName} is already signed into ${cls.name}` }, { status: 409 })
 
     const startDate = body.startDate ? new Date(body.startDate) : new Date()
-    const sessionCount = cls.type === 'PRIVATE' ? Math.max(1, Number(body.sessionCount) || 1) : null
 
-    // Regular monthly subscription, OR an existing multi-month promotional offer.
+    // Regular subscription, OR an existing promotional offer (multi-month for GROUP
+    // classes, a preset session-pack for PRIVATE classes).
+    let sessionCount = cls.type === 'PRIVATE' ? Math.max(1, Number(body.sessionCount) || 1) : null
     let durationDays = cls.durationDays
     let base = baseAmountForClass(cls, sessionCount)
     let offerLabel = ''
-    if (body.offerId && cls.type !== 'PRIVATE') {
+    if (body.offerId) {
       const offer = await prisma.classOffer.findFirst({ where: { id: body.offerId, classId: cls.id, isActive: true } })
       if (!offer) return NextResponse.json({ error: 'Offer not found' }, { status: 404 })
-      durationDays = offer.months * 30
+      if (cls.type === 'PRIVATE') {
+        sessionCount = offer.sessions || sessionCount
+        offerLabel = ` — ${offer.sessions}-session offer`
+      } else {
+        durationDays = (offer.months || 1) * 30
+        offerLabel = ` — ${offer.months}-month offer`
+      }
       base = offer.price
-      offerLabel = ` — ${offer.months}-month offer`
     }
     const endDate = calcEndDate(startDate, durationDays)
 
@@ -119,16 +125,21 @@ export async function PATCH(req: NextRequest) {
     // Explicit confirmation is expected client-side before this call; we still record
     // exactly who performed it and when, regardless.
     const newStart = new Date()
-    const sessionCount = enr.class.type === 'PRIVATE' ? Math.max(1, Number(body.sessionCount) || enr.sessionCount || 1) : null
+    let sessionCount = enr.class.type === 'PRIVATE' ? Math.max(1, Number(body.sessionCount) || enr.sessionCount || 1) : null
     let durationDays = enr.class.durationDays
     let base = baseAmountForClass(enr.class, sessionCount)
     let offerLabel = ''
-    if (body.offerId && enr.class.type !== 'PRIVATE') {
+    if (body.offerId) {
       const offer = await prisma.classOffer.findFirst({ where: { id: body.offerId, classId: enr.classId, isActive: true } })
       if (!offer) return NextResponse.json({ error: 'Offer not found' }, { status: 404 })
-      durationDays = offer.months * 30
+      if (enr.class.type === 'PRIVATE') {
+        sessionCount = offer.sessions || sessionCount
+        offerLabel = ` — ${offer.sessions}-session offer`
+      } else {
+        durationDays = (offer.months || 1) * 30
+        offerLabel = ` — ${offer.months}-month offer`
+      }
       base = offer.price
-      offerLabel = ` — ${offer.months}-month offer`
     }
     const newEnd = calcEndDate(newStart, durationDays)
     const { type: discountType, value: discountValue, originalAmount, amount } = applyDiscount(base, body.discountType, body.discountValue)
