@@ -35,5 +35,14 @@ export async function POST(req: NextRequest) {
     const progress = await prisma.memberProgress.create({ data: { memberId: body.memberId, weight: body.weight, bodyFat: body.bodyFat, waist: body.waist, notes: body.notes } })
     return NextResponse.json(progress)
   }
+  if (body._type === 'submit_feedback') {
+    if (!body.message || !String(body.message).trim()) return NextResponse.json({ error: 'Message is required' }, { status: 400 })
+    const member = await prisma.member.findUnique({ where: { id: body.memberId }, select: { gymId: true } })
+    if (!member) return NextResponse.json({ error: 'Fighter not found' }, { status: 404 })
+    const feedback = await prisma.fighterFeedback.create({
+      data: { gymId: member.gymId, memberId: body.memberId, message: String(body.message).trim() },
+    })
+    return NextResponse.json(feedback)
+  }
   return NextResponse.json({ error: 'Unknown type' }, { status: 400 })
 }

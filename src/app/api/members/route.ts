@@ -49,7 +49,7 @@ export async function GET(req: NextRequest) {
     const member = await prisma.member.findFirst({
       where: { id, gymId: gym.id },
       include: {
-        enrollments: { include: { class: true }, orderBy: { createdAt: 'asc' } },
+        enrollments: { include: { class: { include: { offers: { where: { isActive: true }, orderBy: { months: 'asc' } } } } }, orderBy: { createdAt: 'asc' } },
         payments: { orderBy: { createdAt: 'desc' }, take: 10 },
       },
     })

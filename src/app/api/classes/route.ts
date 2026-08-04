@@ -16,7 +16,7 @@ export async function GET() {
 
   const classes = await prisma.gymClass.findMany({
     where: { gymId: gym.id, ...coachFilter },
-    include: { coach: true, _count: { select: { enrollments: { where: { status: { in: ['ACTIVE', 'FROZEN'] } } } } } },
+    include: { coach: true, offers: { where: { isActive: true }, orderBy: { months: 'asc' } }, _count: { select: { enrollments: { where: { status: { in: ['ACTIVE', 'FROZEN'] } } } } } },
     orderBy: { createdAt: 'desc' },
   })
 
@@ -82,8 +82,11 @@ export async function POST(req: NextRequest) {
         branchId:    body.branchId    || null,
         status,
         createdById: user.id,
+        offers: (!isPrivate && Array.isArray(body.offers))
+          ? { create: body.offers.filter((o: any) => o.months > 0 && o.price >= 0).map((o: any) => ({ months: Number(o.months), price: Number(o.price), label: o.label || null })) }
+          : undefined,
       },
-      include: { coach: true },
+      include: { coach: true, offers: true },
     })
     return NextResponse.json(cls)
   } catch (err: any) {
@@ -142,7 +145,12 @@ export async function PATCH(req: NextRequest) {
     updateData.status = 'PENDING'
     revertedToPending = true
   }
-  const updated = await prisma.gymClass.update({ where: { id }, data: updateData, include: { coach: true } })
+  if (Array.isArray(body.offers)) {
+    await prisma.classOffer.deleteMany({ where: { classId: id } })
+    const valid = body.offers.filter((o: any) => o.months > 0 && o.price >= 0)
+    if (valid.length > 0) updateData.offers = { create: valid.map((o: any) => ({ months: Number(o.months), price: Number(o.price), label: o.label || null })) }
+  }
+  const updated = await prisma.gymClass.update({ where: { id }, data: updateData, include: { coach: true, offers: true } })
   return NextResponse.json({ success: true, revertedToPending, class: updated })
 }
 

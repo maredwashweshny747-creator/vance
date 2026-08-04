@@ -32,7 +32,112 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
-## 2026-08-03 (3) — Claude (chat) — Phone regex, attendance confirm dialog, cross-browser QR scanner, classes search/filters, prefixed Fighter IDs, seed overhaul
+## 2026-08-03 (4) — Claude (chat) — Cover coach, WhatsApp fix, portal fixes, feedback system, membership offers, remaining-sessions fix, class switching rewrite
+
+**Changed:**
+- **Cover coach**: `CoachAttendance.assignedCoachId` added — `coachId` is
+  now always "whoever gets the attendance credit," `assignedCoachId` is
+  kept for history. POST `/api/coach-attendance` accepts `coverCoachId`;
+  when present it deletes the absent assigned coach's record for that
+  session/date (they get zero credit) and credits the cover coach
+  instead. `countPlayersAttended` in `/api/payroll` rewritten to be
+  cover-aware: it walks `CoachAttendance` overrides first to figure out,
+  per (classId, date), who actually taught, then attributes fighter
+  `ClassAttendance` counts to that coach instead of blindly trusting
+  `GymClass.coachId`. UI: "Assign Cover Coach" button + picker modal on
+  `/dashboard/attendance`.
+- **WhatsApp fix**: `normalizeEgyptPhone()` (`src/lib/utils.ts`) rewritten
+  — the old code left a stored `01000428615` completely un-normalized
+  (no `+20`, no dropped leading 0), which is why links didn't work. Now
+  handles local (`01...`), with-country-code (`20...`), `+20...`, and
+  doubled (`0020...`) inputs — all resolve to the same `wa.me/20...`
+  link. `whatsappLink()` now calls this internally.
+- **Portal login fighter-ID length**: input `maxLength` was hardcoded to
+  `8`, truncating the new `200060001`-style IDs — bumped to `20`.
+  Backend was never the problem (plain string equality, no truncation).
+- **Photo zoom**: portal had no profile photo displayed anywhere before
+  this — added a clickable avatar (photo or initials fallback) to the
+  portal header, opening a dark-overlay lightbox modal on click.
+- **Feedback system**: new `FighterFeedback` model (gymId, memberId,
+  message, isRead, createdAt). Portal home tab gets a "Contact
+  Administration" textarea + submit, hitting a new `submit_feedback`
+  type on the existing `/api/portal` POST discriminator. New admin-only
+  `/api/fighter-feedback` (GET/PATCH mark-read/DELETE) and a new
+  `/dashboard/messages` page (unread filter, mark read/unread, delete)
+  with a nav entry in `DashboardLayout.tsx`.
+- **Membership offers**: new `ClassOffer` model (classId, months, price,
+  label, isActive) — admins add/remove offers per GROUP class (not
+  PRIVATE, which is already session-count based) from the class
+  edit/create form; offers show as badges on the class card. Enrolling,
+  adding a class, and renewing all gained a "Regular Monthly / Existing
+  Offer" toggle (`DiscountAndPricingStep` extended with `offerId`); when
+  an offer is picked, `durationDays = offer.months * 30` and the base
+  price becomes `offer.price` instead of the class's normal cycle price.
+- **Remaining sessions formula fixed** (`sessionsAllowedForCycle` in
+  `src/lib/utils.ts`): was `daysPerWeek * (durationDays/7)`, which for a
+  real 30-day month gives `2 * 4.28 = 8.57 → 9`, not the `8` the client
+  expects. Now flat `daysPerWeek * 4 * (durationDays/30)`, matching every
+  example in the spec exactly (8 for 1 month, 24 for 3 months).
+  `checkAndExpireEnrollment` now derives `durationDays` from the
+  enrollment's *actual* `startDate`→`endDate` span instead of always
+  re-reading the class's nominal cycle — this is what makes a multi-month
+  offer's remaining-sessions total scale correctly without any
+  offer-specific branching in the expiry logic itself.
+- **Class switching rewritten** (`_action: 'switch'` in
+  `class-enrollments` PATCH): previously canceled the old enrollment and
+  created a brand-new one with `startDate: now` — which reset the start
+  date (wrong) and, because attendance is keyed by `enrollmentId`, reset
+  attended-session tracking to zero (wrong — the "8 remaining → attend 2
+  → switch → 6 remaining" example was broken). Now **the same enrollment
+  row is reused**: only `classId` changes, `startDate`/`endDate` are left
+  untouched, so both requirements are satisfied for free — attendance
+  history and remaining-session math just keep working because they were
+  never disconnected from the enrollment in the first place. Payment
+  handling: only `Payment` rows with `enrollmentId` equal to *this*
+  enrollment are deleted (Kickboxing's payment is untouched when
+  switching Adam from MMA to Boxing, exactly per the spec's example) —
+  a fresh payment is created for the new class, linked via the same
+  `enrollmentId`. Wrapped in one `$transaction`.
+
+**Why:** client spec — cover-coach attendance crediting, a WhatsApp link
+that actually opens a chat, a portal login that isn't silently truncated,
+a profile photo lightbox, a two-way admin/fighter messaging channel,
+promotional multi-month packages, a remaining-sessions formula matching
+the client's worked examples exactly, and a switch operation that
+doesn't lose attendance history or touch unrelated payments.
+
+**Watch out for:**
+- `sessionsAllowedForCycle`'s formula change affects **every** existing
+  active GROUP enrollment's remaining-session count the moment this
+  ships — a fighter who was 1 session from expiring under the old
+  (slightly higher) formula might now show as already expired, since the
+  new formula is stricter for any month that isn't exactly 30 days. Worth
+  flagging to the client before deploying, in case any fighters currently
+  mid-cycle need a manual grace adjustment.
+- `checkAndExpireEnrollment`'s signature changed (`startDate` is now
+  required in the enrollment param) — every call site already fetches
+  full Prisma rows via `include` so this compiled clean, but if a new
+  call site ever builds a partial/manual enrollment object, it needs
+  `startDate` too or `tsc` will catch it.
+- Switching a fighter into a class with a *different* weekly frequency
+  than the one they're leaving will change their remaining-sessions total
+  going forward (by design — the formula reads the new class's
+  `daysOfWeek.length` for the same span) — attended-so-far still carries
+  over correctly, only the going-forward allowance changes to match the
+  new class's schedule.
+- `ClassOffer`/`FighterFeedback`/`CoachAttendance.assignedCoachId` are all
+  new schema — migration required.
+
+**Verified with:** `tsc --noEmit` in the working directory AND an
+isolated re-extraction with `node_modules` symlinked in — identical
+result both places (same single pre-existing unrelated `TS2322`, zero
+new errors). Did not run the seed script or a live DB against the new
+switch/renew transactions in this sandbox (no DB connection available) —
+worth manually re-testing the "8 remaining → attend 2 → switch → 6
+remaining" and "only the switched subscription's payment is removed"
+scenarios end-to-end locally before shipping.
+
+---
 
 **Changed:**
 - **Phone regex** (`^01[0125]\d{8}$`, Egyptian mobile): new shared

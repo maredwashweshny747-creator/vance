@@ -16,12 +16,42 @@ async function countSessions(gymId: string, coachId: string, month: number, year
   })
 }
 
-// Total fighter attendance records ever logged against classes this coach teaches
-// (not scoped to a month — a running lifetime total, computed live).
+// Total fighter attendance records ever logged against classes this coach teaches —
+// but attributed to whoever actually covered the session, not just the class's
+// normally-assigned coach (a cover coach's sessions count for them, not the absent
+// assigned coach).
 async function countPlayersAttended(gymId: string, coachId: string) {
-  return prisma.classAttendance.count({
-    where: { class: { gymId, coachId } },
+  const overrides = await prisma.coachAttendance.findMany({
+    where: { class: { gymId }, assignedCoachId: { not: null } },
+    select: { coachId: true, classId: true, date: true, assignedCoachId: true },
   })
+  // key -> the coach who actually gets credit, only recorded when it differs from the assigned coach
+  const coveredAway = new Map<string, string>()
+  for (const o of overrides) {
+    if (o.assignedCoachId && o.assignedCoachId !== o.coachId) {
+      coveredAway.set(`${o.classId}|${o.date.toISOString()}`, o.coachId)
+    }
+  }
+
+  // This coach's own classes, minus any sessions someone else covered for them.
+  const ownAttendance = await prisma.classAttendance.findMany({
+    where: { class: { gymId, coachId } },
+    select: { classId: true, date: true },
+  })
+  let count = ownAttendance.filter(a => {
+    const coveringCoach = coveredAway.get(`${a.classId}|${a.date.toISOString()}`)
+    return !coveringCoach || coveringCoach === coachId
+  }).length
+
+  // Sessions on other coaches' classes that this coach covered.
+  const coveredKeys = Array.from(coveredAway.entries()).filter(([, cId]) => cId === coachId).map(([k]) => k)
+  for (const key of coveredKeys) {
+    const [classId, dateIso] = key.split('|')
+    const cls = await prisma.gymClass.findUnique({ where: { id: classId }, select: { coachId: true } })
+    if (cls?.coachId === coachId) continue // already counted in ownAttendance above
+    count += await prisma.classAttendance.count({ where: { classId, date: new Date(dateIso) } })
+  }
+  return count
 }
 
 export async function GET(req: NextRequest) {

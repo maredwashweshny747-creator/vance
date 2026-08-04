@@ -82,13 +82,31 @@ export const paymentColors: Record<string, string> = {
 /** Total sessions allotted for one billing cycle, given how many days/week a class meets. */
 export function sessionsAllowedForCycle(daysPerWeek: number, durationDays: number) {
   if (daysPerWeek <= 0) return 0
-  return Math.round(daysPerWeek * (durationDays / 7))
+  // Each billing month is treated as a flat 4 weeks (not real calendar days / 7) —
+  // e.g. 2 sessions/week × 4 × 1 month = 8, × 3 months (a 90-day offer) = 24.
+  const months = durationDays / 30
+  return Math.round(daysPerWeek * 4 * months)
 }
 
 /** Builds a wa.me link from a phone number, stripping everything but digits and a leading +. */
+export function normalizeEgyptPhone(phone: string): string | null {
+  // Strip everything except digits (drops spaces, dashes, parentheses, plus signs)
+  let digits = phone.replace(/\D/g, '')
+  if (!digits) return null
+  // Duplicate/leading country code typed as 0020...
+  if (digits.startsWith('0020')) digits = digits.slice(2)
+  // Local format: 01012345678 (11 digits, starts 010/011/012/015) -> drop the leading 0, add 20
+  if (/^01[0125]\d{8}$/.test(digits)) return `20${digits.slice(1)}`
+  // Already has the country code, with or without the leading 0: 201012345678 or 2001012345678
+  if (/^2001[0125]\d{8}$/.test(digits)) return `20${digits.slice(3)}`
+  if (/^201[0125]\d{8}$/.test(digits)) return digits
+  // Not a recognizable Egyptian mobile number — fall back to whatever digits we have
+  return digits
+}
+
 export function whatsappLink(phone?: string | null, message?: string | null) {
   if (!phone) return null
-  const cleaned = phone.replace(/[^\d+]/g, '').replace(/^\+/, '')
+  const cleaned = normalizeEgyptPhone(phone)
   if (!cleaned) return null
   return message ? `https://wa.me/${cleaned}?text=${encodeURIComponent(message)}` : `https://wa.me/${cleaned}`
 }

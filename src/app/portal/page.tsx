@@ -1,8 +1,8 @@
 'use client'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Swords, Hash, Building2, ArrowRight, UserCheck, Calendar, TrendingUp, Dumbbell, QrCode, CheckCircle2, Clock, Target, Plus, Weight } from 'lucide-react'
-import { cn, formatDate } from '@/lib/utils'
+import { Swords, Hash, Building2, ArrowRight, UserCheck, Calendar, TrendingUp, Dumbbell, QrCode, CheckCircle2, Clock, Target, Plus, Weight, X, MessageSquare, Send } from 'lucide-react'
+import { cn, formatDate, getInitials } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
 interface PortalData {
@@ -17,6 +17,9 @@ export default function MemberPortal() {
   const [data, setData] = useState<PortalData | null>(null)
   const [tab, setTab] = useState<'home'|'classes'|'workout'|'progress'|'qr'>('home')
   const [progressForm, setProgressForm] = useState({ weight:'', bodyFat:'', waist:'', notes:'' })
+  const [photoZoom, setPhotoZoom] = useState(false)
+  const [feedbackMsg, setFeedbackMsg] = useState('')
+  const [sendingFeedback, setSendingFeedback] = useState(false)
 
   async function login(e: React.FormEvent) {
     e.preventDefault()
@@ -35,6 +38,14 @@ export default function MemberPortal() {
     if(!data) return
     const res = await fetch('/api/portal', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ _type:'add_progress', memberId:data.member.id, weight:+progressForm.weight||null, bodyFat:+progressForm.bodyFat||null, waist:+progressForm.waist||null, notes:progressForm.notes }) })
     if(res.ok){ toast.success('Progress logged!'); setProgressForm({weight:'',bodyFat:'',waist:'',notes:''}) } else { toast.error('Failed') }
+  }
+
+  async function submitFeedback() {
+    if (!data || !feedbackMsg.trim()) return
+    setSendingFeedback(true)
+    const res = await fetch('/api/portal', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ _type:'submit_feedback', memberId:data.member.id, message:feedbackMsg.trim() }) })
+    setSendingFeedback(false)
+    if (res.ok) { toast.success('Message sent to administration'); setFeedbackMsg('') } else toast.error('Failed to send — try again')
   }
 
   const statusColors: Record<string,string> = {
@@ -58,7 +69,7 @@ export default function MemberPortal() {
         <form onSubmit={login} className="card space-y-4">
           <div>
             <label className="label">Fighter ID</label>
-            <div className="relative"><Hash size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400"/><input value={fighterId} onChange={e=>setFighterId(e.target.value)} required className="input pl-9 font-mono tracking-widest" placeholder="00002000" maxLength={8}/></div>
+            <div className="relative"><Hash size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400"/><input value={fighterId} onChange={e=>setFighterId(e.target.value)} required className="input pl-9 font-mono tracking-widest" placeholder="200060001" maxLength={20}/></div>
           </div>
           <div>
             <label className="label">Gym ID</label>
@@ -101,11 +112,17 @@ export default function MemberPortal() {
 
       <div className="max-w-2xl mx-auto px-4 py-6">
         {/* Welcome */}
-        <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} className="mb-6">
-          <h2 className="font-display text-3xl text-white">HEY, {member.firstName.toUpperCase()} 👋</h2>
-          <p className="text-dark-400 text-sm mt-1">
-            {daysLeft !== null ? (daysLeft > 0 ? `Next renewal in ${daysLeft} days` : 'A plan has expired') : 'Welcome back'}
-          </p>
+        <motion.div initial={{opacity:0,y:20}} animate={{opacity:1,y:0}} className="mb-6 flex items-center gap-3">
+          <button onClick={() => member.photo && setPhotoZoom(true)} className={cn('w-14 h-14 rounded-2xl overflow-hidden flex items-center justify-center flex-shrink-0 border border-dark-600', member.photo ? 'cursor-zoom-in' : 'bg-dark-800')}>
+            {member.photo ? <img src={member.photo} alt={`${member.firstName} ${member.lastName}`} className="w-full h-full object-cover" />
+              : <span className="text-primary-400 font-bold">{getInitials(`${member.firstName} ${member.lastName}`)}</span>}
+          </button>
+          <div>
+            <h2 className="font-display text-3xl text-white">HEY, {member.firstName.toUpperCase()} 👋</h2>
+            <p className="text-dark-400 text-sm mt-1">
+              {daysLeft !== null ? (daysLeft > 0 ? `Next renewal in ${daysLeft} days` : 'A plan has expired') : 'Welcome back'}
+            </p>
+          </div>
         </motion.div>
 
         {/* Tab nav */}
@@ -160,6 +177,16 @@ export default function MemberPortal() {
                   <span className="text-dark-500 text-xs">{new Date(a.date).toLocaleDateString()}</span>
                 </div>
               ))}
+            </div>
+            <div className="card">
+              <h3 className="text-white font-semibold mb-1 text-sm flex items-center gap-2"><MessageSquare size={15} className="text-primary-400"/> Contact Administration</h3>
+              <p className="text-dark-500 text-xs mb-3">Send a message to the front desk — they'll follow up with you.</p>
+              <textarea value={feedbackMsg} onChange={e => setFeedbackMsg(e.target.value)} rows={3}
+                placeholder="Write your message…" className="input resize-none w-full" />
+              <button onClick={submitFeedback} disabled={sendingFeedback || !feedbackMsg.trim()}
+                className="btn-primary mt-2 w-full justify-center disabled:opacity-50">
+                <Send size={14}/> {sendingFeedback ? 'Sending…' : 'Submit'}
+              </button>
             </div>
           </div>
         )}
@@ -291,6 +318,18 @@ export default function MemberPortal() {
           </div>
         )}
       </div>
+
+      {/* Profile photo lightbox */}
+      <AnimatePresence>
+        {photoZoom && member.photo && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm" onClick={() => setPhotoZoom(false)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative max-w-lg w-full">
+              <button onClick={() => setPhotoZoom(false)} className="absolute -top-10 right-0 text-white/80 hover:text-white"><X size={24}/></button>
+              <img src={member.photo} alt={`${member.firstName} ${member.lastName}`} className="w-full h-auto rounded-2xl object-contain" onClick={e => e.stopPropagation()} />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -75,8 +75,38 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json()
-  let { coachId, classId, status, method } = body
+  let { coachId, classId, status, method, coverCoachId } = body
   const date = body.date ? startOfDay(new Date(body.date)) : startOfDay(new Date())
+
+  if (!coachId && !classId) return NextResponse.json({ error: 'coachId or classId required' }, { status: 400 })
+
+  // Cover-coach path: classId + coverCoachId identify the session, and the cover coach
+  // doesn't need to be the class's normally-assigned coach.
+  if (coverCoachId) {
+    if (!classId) return NextResponse.json({ error: 'classId required to assign a cover coach' }, { status: 400 })
+    const cls = await prisma.gymClass.findFirst({ where: { id: classId, gymId: gym.id } })
+    if (!cls) return NextResponse.json({ error: 'Class not found' }, { status: 404 })
+    const cover = await prisma.coach.findFirst({ where: { id: coverCoachId, gymId: gym.id } })
+    if (!cover) return NextResponse.json({ error: 'Cover coach not found' }, { status: 404 })
+
+    const assignedCoachId = cls.coachId || null
+    // If the assigned coach already has a record for this session, remove it — they
+    // must not receive attendance credit once a cover coach is assigned.
+    if (assignedCoachId && assignedCoachId !== coverCoachId) {
+      await prisma.coachAttendance.deleteMany({ where: { coachId: assignedCoachId, classId, date } })
+    }
+    const existingCover = await prisma.coachAttendance.findUnique({ where: { coachId_classId_date: { coachId: coverCoachId, classId, date } } })
+    if (existingCover && existingCover.status === 'ATTENDED') {
+      return NextResponse.json({ error: 'This coach is already marked attended for this session' }, { status: 409 })
+    }
+    const mark = await prisma.coachAttendance.upsert({
+      where: { coachId_classId_date: { coachId: coverCoachId, classId, date } },
+      update: { status: status || 'ATTENDED', method: method || 'MANUAL', markedById: user.id, markedAt: new Date(), assignedCoachId },
+      create: { coachId: coverCoachId, classId, date, status: status || 'ATTENDED', method: method || 'MANUAL', markedById: user.id, assignedCoachId },
+      include: { class: true, coach: true },
+    })
+    return NextResponse.json(mark)
+  }
 
   if (!coachId) return NextResponse.json({ error: 'coachId required' }, { status: 400 })
 
@@ -101,8 +131,8 @@ export async function POST(req: NextRequest) {
 
   const mark = await prisma.coachAttendance.upsert({
     where: { coachId_classId_date: { coachId, classId, date } },
-    update: { status: status || 'ATTENDED', method: method || 'MANUAL', markedById: user.id, markedAt: new Date() },
-    create: { coachId, classId, date, status: status || 'ATTENDED', method: method || 'MANUAL', markedById: user.id },
+    update: { status: status || 'ATTENDED', method: method || 'MANUAL', markedById: user.id, markedAt: new Date(), assignedCoachId: coachId },
+    create: { coachId, classId, date, status: status || 'ATTENDED', method: method || 'MANUAL', markedById: user.id, assignedCoachId: coachId },
     include: { class: true },
   })
   return NextResponse.json(mark)

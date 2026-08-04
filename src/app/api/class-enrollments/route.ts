@@ -29,8 +29,20 @@ export async function POST(req: NextRequest) {
     if (existingActive) return NextResponse.json({ error: `${member.firstName} is already signed into ${cls.name}` }, { status: 409 })
 
     const startDate = body.startDate ? new Date(body.startDate) : new Date()
-    const endDate = calcEndDate(startDate, cls.durationDays)
     const sessionCount = cls.type === 'PRIVATE' ? Math.max(1, Number(body.sessionCount) || 1) : null
+
+    // Regular monthly subscription, OR an existing multi-month promotional offer.
+    let durationDays = cls.durationDays
+    let base = baseAmountForClass(cls, sessionCount)
+    let offerLabel = ''
+    if (body.offerId && cls.type !== 'PRIVATE') {
+      const offer = await prisma.classOffer.findFirst({ where: { id: body.offerId, classId: cls.id, isActive: true } })
+      if (!offer) return NextResponse.json({ error: 'Offer not found' }, { status: 404 })
+      durationDays = offer.months * 30
+      base = offer.price
+      offerLabel = ` — ${offer.months}-month offer`
+    }
+    const endDate = calcEndDate(startDate, durationDays)
 
     const enrollment = await prisma.classEnrollment.create({
       data: {
@@ -40,7 +52,6 @@ export async function POST(req: NextRequest) {
       include: { class: true },
     })
 
-    const base = baseAmountForClass(cls, sessionCount)
     const { type: discountType, value: discountValue, originalAmount, amount } = applyDiscount(base, body.discountType, body.discountValue)
 
     await prisma.payment.create({
@@ -48,7 +59,7 @@ export async function POST(req: NextRequest) {
         gymId: gym.id, memberId: member.id, classId: cls.id, enrollmentId: enrollment.id,
         amount, originalAmount, discountType, discountValue, currency: gym.currency || 'EGP',
         type: 'MEMBERSHIP', status: 'COMPLETED', method: body.paymentMethod || null, proofPhoto: body.proofPhoto || null,
-        description: `New enrollment — ${member.firstName} ${member.lastName} (${cls.name}${sessionCount ? `, ${sessionCount} sessions` : ''})`,
+        description: `New enrollment — ${member.firstName} ${member.lastName} (${cls.name}${sessionCount ? `, ${sessionCount} sessions` : ''}${offerLabel})`,
         paidAt: new Date(),
       },
     })
@@ -108,9 +119,18 @@ export async function PATCH(req: NextRequest) {
     // Explicit confirmation is expected client-side before this call; we still record
     // exactly who performed it and when, regardless.
     const newStart = new Date()
-    const newEnd = calcEndDate(newStart, enr.class.durationDays)
     const sessionCount = enr.class.type === 'PRIVATE' ? Math.max(1, Number(body.sessionCount) || enr.sessionCount || 1) : null
-    const base = baseAmountForClass(enr.class, sessionCount)
+    let durationDays = enr.class.durationDays
+    let base = baseAmountForClass(enr.class, sessionCount)
+    let offerLabel = ''
+    if (body.offerId && enr.class.type !== 'PRIVATE') {
+      const offer = await prisma.classOffer.findFirst({ where: { id: body.offerId, classId: enr.classId, isActive: true } })
+      if (!offer) return NextResponse.json({ error: 'Offer not found' }, { status: 404 })
+      durationDays = offer.months * 30
+      base = offer.price
+      offerLabel = ` — ${offer.months}-month offer`
+    }
+    const newEnd = calcEndDate(newStart, durationDays)
     const { type: discountType, value: discountValue, originalAmount, amount } = applyDiscount(base, body.discountType, body.discountValue)
 
     // Atomic: remove the previous subscription + its payment, create a fresh
@@ -133,7 +153,7 @@ export async function PATCH(req: NextRequest) {
           gymId: gym.id, memberId: enr.memberId, classId: enr.classId, enrollmentId: newEnrollment.id,
           amount, originalAmount, discountType, discountValue, currency: gym.currency || 'EGP',
           type: 'MEMBERSHIP', status: 'COMPLETED', method: body.paymentMethod || null, proofPhoto: body.proofPhoto || null,
-          description: `Renewal — ${enr.member.firstName} ${enr.member.lastName} (${enr.class.name}${sessionCount ? `, ${sessionCount} sessions` : ''}), confirmed by ${user.name || user.email}`,
+          description: `Renewal — ${enr.member.firstName} ${enr.member.lastName} (${enr.class.name}${sessionCount ? `, ${sessionCount} sessions` : ''}${offerLabel}), confirmed by ${user.name || user.email}`,
           paidAt: new Date(),
         },
       })
@@ -150,8 +170,9 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ success: true, message: 'Enrollment canceled.' })
   }
 
-  // Switch to a different class mid-cycle (e.g. Kickboxing -> MMA). The remaining
-  // time on the current cycle carries over — no new charge, no lost days.
+  // Switch to a different class mid-cycle (e.g. Kickboxing -> MMA). The original
+  // start/end date and everything already attended carry over unchanged — only the
+  // class (and the one payment tied to *this* subscription) actually changes.
   if (action === 'switch') {
     const newClassId = body.newClassId
     if (!newClassId) return NextResponse.json({ error: 'newClassId required' }, { status: 400 })
@@ -163,18 +184,35 @@ export async function PATCH(req: NextRequest) {
     if (alreadyIn) return NextResponse.json({ error: `${enr.member.firstName} is already signed into ${newClass.name}` }, { status: 409 })
 
     const now = new Date()
-    await prisma.classEnrollment.update({
-      where: { id }, data: { status: 'CANCELED', freezeStartedAt: null, lastAction: 'SWITCHED', lastActionById: user.id, lastActionAt: now },
+    const sessionCount = newClass.type === 'PRIVATE' ? Math.max(1, Number(body.sessionCount) || enr.sessionCount || 1) : null
+    const base = baseAmountForClass(newClass, sessionCount)
+    const { type: discountType, value: discountValue, originalAmount, amount } = applyDiscount(base, body.discountType, body.discountValue)
+
+    const { switched, payment } = await prisma.$transaction(async (tx) => {
+      // Only the payment tied to THIS enrollment — never another class's subscription/payment.
+      await tx.payment.deleteMany({ where: { enrollmentId: enr.id } })
+      const switched = await tx.classEnrollment.update({
+        where: { id: enr.id },
+        data: {
+          classId: newClassId, sessionCount,
+          // startDate/endDate deliberately untouched — same subscription period, only the class changes.
+          lastAction: 'SWITCHED', lastActionById: user.id, lastActionAt: now,
+        },
+        include: { class: true },
+      })
+      const payment = await tx.payment.create({
+        data: {
+          gymId: gym.id, memberId: enr.memberId, classId: newClassId, enrollmentId: enr.id,
+          amount, originalAmount, discountType, discountValue, currency: gym.currency || 'EGP',
+          type: 'MEMBERSHIP', status: 'COMPLETED', method: body.paymentMethod || null, proofPhoto: body.proofPhoto || null,
+          description: `Switched — ${enr.member.firstName} ${enr.member.lastName} (${enr.class.name} → ${newClass.name})`,
+          paidAt: now,
+        },
+      })
+      return { switched, payment }
     })
-    const newEnrollment = await prisma.classEnrollment.create({
-      data: {
-        memberId: enr.memberId, classId: newClassId, status: 'ACTIVE',
-        startDate: now, endDate: enr.endDate, // keep the remaining time from the old cycle
-        addedById: user.id, lastAction: 'SWITCHED', lastActionById: user.id, lastActionAt: now,
-      },
-      include: { class: true },
-    })
-    return NextResponse.json({ success: true, message: `Switched from ${enr.class.name} to ${newClass.name} — remaining days carried over.`, enrollment: newEnrollment })
+
+    return NextResponse.json({ success: true, message: `Switched from ${enr.class.name} to ${newClass.name} — remaining sessions and days carried over.`, enrollment: switched })
   }
 
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 })

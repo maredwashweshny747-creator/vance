@@ -52,9 +52,11 @@ export default function AttendancePage() {
       .then(d => setMembers(Array.isArray(d) ? d : []))
   }, [])
 
-  async function checkInCoach(coachId: string, classId: string) {
-    const res = await fetch('/api/coach-attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coachId, classId, status: 'ATTENDED' }) })
-    if (res.ok) { toast.success('Coach checked in'); loadCoaches() } else { const d = await res.json().catch(()=>({})); toast.error(d.error || 'Failed') }
+  const [coverPicker, setCoverPicker] = useState<{ coachId: string; coachName: string; classId: string; className: string } | null>(null)
+
+  async function checkInCoach(coachId: string, classId: string, coverCoachId?: string) {
+    const res = await fetch('/api/coach-attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coachId, classId, status: 'ATTENDED', coverCoachId }) })
+    if (res.ok) { toast.success(coverCoachId ? 'Cover coach checked in' : 'Coach checked in'); loadCoaches(); setCoverPicker(null) } else { const d = await res.json().catch(()=>({})); toast.error(d.error || 'Failed') }
   }
 
   const filtered = members.filter(m =>
@@ -229,7 +231,11 @@ export default function AttendancePage() {
                         {cls.checkedIn ? (
                           <CheckCircle2 size={14} className="text-primary-400 flex-shrink-0"/>
                         ) : canCheckInCoaches ? (
-                          <button onClick={() => checkInCoach(c.coachId, cls.id)} className="flex-shrink-0 px-2 py-1 bg-primary-400/10 border border-primary-400/20 text-primary-400 rounded-md hover:bg-primary-400/20 transition-colors">Check In</button>
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            <button onClick={() => checkInCoach(c.coachId, cls.id)} className="px-2 py-1 bg-primary-400/10 border border-primary-400/20 text-primary-400 rounded-md hover:bg-primary-400/20 transition-colors">Check In</button>
+                            <button onClick={() => setCoverPicker({ coachId: c.coachId, coachName: `${c.firstName} ${c.lastName}`, classId: cls.id, className: cls.name })}
+                              className="px-2 py-1 bg-dark-600 border border-dark-500 text-dark-300 rounded-md hover:bg-dark-500 transition-colors">Assign Cover Coach</button>
+                          </div>
                         ) : (
                           <span className="text-dark-500 flex-shrink-0">Not checked in</span>
                         )}
@@ -271,6 +277,31 @@ export default function AttendancePage() {
                 <button onClick={async () => { const m = confirmTarget; setConfirmTarget(null); if (m) await submitCheckIn(m.id) }} disabled={checkingIn === confirmTarget.id}
                   className="flex-1 py-2.5 rounded-xl bg-primary-400 hover:bg-primary-300 text-dark-950 text-sm font-bold transition-colors disabled:opacity-60">Confirm</button>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Assign cover coach */}
+      <AnimatePresence>
+        {coverPicker && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setCoverPicker(null)}>
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()} className="bg-dark-800 border border-dark-600 rounded-2xl p-6 w-full max-w-sm">
+              <h3 className="font-display text-xl text-white mb-1">ASSIGN COVER COACH</h3>
+              <p className="text-dark-400 text-xs mb-4">{coverPicker.coachName} is absent from <span className="text-white">{coverPicker.className}</span> — who's covering?</p>
+              <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                {coaches.filter(c => c.coachId !== coverPicker.coachId).map(c => (
+                  <button key={c.coachId} onClick={() => checkInCoach(coverPicker.coachId, coverPicker.classId, c.coachId)}
+                    className="w-full text-left px-3 py-2 rounded-lg bg-dark-700 border border-dark-600 text-white text-sm hover:border-primary-400/40 transition-colors">
+                    {c.firstName} {c.lastName}
+                  </button>
+                ))}
+                {coaches.filter(c => c.coachId !== coverPicker.coachId).length === 0 && (
+                  <p className="text-dark-500 text-xs">No other coaches available to cover.</p>
+                )}
+              </div>
+              <button onClick={() => setCoverPicker(null)} className="btn-ghost w-full justify-center mt-4">Cancel</button>
             </motion.div>
           </div>
         )}

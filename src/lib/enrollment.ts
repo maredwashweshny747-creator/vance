@@ -48,7 +48,7 @@ export async function generateFighterId(gymId: string): Promise<string> {
  * Whichever comes first. Call this whenever enrollments are read/listed so
  * status stays accurate without a background job.
  */
-export async function checkAndExpireEnrollment(enrollment: { id: string; status: string; endDate: Date | null; sessionCount?: number | null }, cls: { daysOfWeek: string[]; durationDays: number; isOneTime?: boolean; type?: string }) {
+export async function checkAndExpireEnrollment(enrollment: { id: string; status: string; startDate: Date; endDate: Date | null; sessionCount?: number | null }, cls: { daysOfWeek: string[]; durationDays: number; isOneTime?: boolean; type?: string }) {
   if (enrollment.status !== 'ACTIVE') return enrollment.status
 
   const daysPassed = enrollment.endDate ? new Date() > new Date(enrollment.endDate) : false
@@ -57,9 +57,15 @@ export async function checkAndExpireEnrollment(enrollment: { id: string; status:
     where: { enrollmentId: enrollment.id, status: 'ATTENDED' },
   })
   // Private/session-based classes are bounded by the sessions purchased, not a weekly schedule.
+  // Group classes use the enrollment's actual start->end span (not the class's nominal
+  // 30-day cycle) so a multi-month offer correctly scales the total — e.g. 2x/week over a
+  // 3-month (90-day) offer = 2 × 4 × 3 = 24, not the 1-month default.
+  const spanDays = enrollment.endDate
+    ? Math.round((new Date(enrollment.endDate).getTime() - new Date(enrollment.startDate).getTime()) / 86400000)
+    : cls.durationDays
   const sessionsAllowed = cls.type === 'PRIVATE'
     ? (enrollment.sessionCount || 0)
-    : cls.isOneTime ? 1 : sessionsAllowedForCycle(cls.daysOfWeek.length, cls.durationDays)
+    : cls.isOneTime ? 1 : sessionsAllowedForCycle(cls.daysOfWeek.length, spanDays)
   const sessionsUsedUp = sessionsAllowed > 0 && attended >= sessionsAllowed
 
   if (daysPassed || sessionsUsedUp) {

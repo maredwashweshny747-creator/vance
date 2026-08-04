@@ -85,6 +85,7 @@ model Gym {
   payments   Payment[]
   announcements Announcement[]
   leads      Lead[]
+  fighterFeedback FighterFeedback[]
   staff      Staff[]
   payrollRuns PayrollRun[]
   coachPayrollRuns CoachPayrollRun[]
@@ -122,6 +123,7 @@ model Member {
   attendance   ClassAttendance[]
   progress     MemberProgress[]
   workoutPlans WorkoutPlan[]
+  feedback     FighterFeedback[]
 
   @@unique([gymId, email])
   @@unique([gymId, fighterId])
@@ -170,6 +172,9 @@ model CoachAttendance {
   method     String   @default("MANUAL")   // MANUAL, QR, ROSTER
   markedById String?
   markedAt   DateTime @default(now())
+  assignedCoachId String? // the coach normally assigned to teach this class — kept for
+                          // history even when a different coach covers (coachId above is
+                          // always the one who actually gets attendance credit)
 
   coach Coach    @relation(fields: [coachId], references: [id], onDelete: Cascade)
   class GymClass @relation(fields: [classId], references: [id], onDelete: Cascade)
@@ -213,6 +218,19 @@ model GymClass {
   attendance  ClassAttendance[]
   coachAttendance CoachAttendance[]
   payments    Payment[]
+  offers      ClassOffer[]
+}
+
+model ClassOffer {
+  id        String   @id @default(cuid())
+  classId   String
+  months    Int      // billing duration in months, e.g. 2, 3, 6
+  price     Float    // total price for the whole offer duration
+  label     String?  // optional display label, e.g. "Summer Special"
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  class GymClass @relation(fields: [classId], references: [id], onDelete: Cascade)
 }
 
 // One fighter's subscription to one class. A fighter training MMA + Kickboxing has two of these.
@@ -507,6 +525,20 @@ model MemberProgress {
   recordedAt  DateTime @default(now())
 
   member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+}
+
+model FighterFeedback {
+  id        String   @id @default(cuid())
+  gymId     String
+  memberId  String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  gym    Gym    @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+
+  @@index([gymId, isRead])
 }
 
 model WorkoutPlan {

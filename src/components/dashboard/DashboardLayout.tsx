@@ -6,7 +6,7 @@ import { signOut, useSession } from 'next-auth/react'
 import {
   Zap, LayoutDashboard, Users, Calendar, CreditCard, BarChart3,
   Settings, LogOut, Menu, X, Bell, UserCheck, Target,
-  Package, Building2, DollarSign, ExternalLink, Shield, FileDown, Swords,
+  Package, Building2, DollarSign, ExternalLink, Shield, FileDown, Swords, MessageSquare,
 } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 
@@ -33,6 +33,7 @@ const ALL_NAV_GROUPS = [
     label: 'Finance',
     items: [
       { href: '/dashboard/payments',   icon: CreditCard,      label: 'Payments',         roles: ['ADMIN','RECEPTIONIST'] as Role[] },
+      { href: '/dashboard/messages',   icon: MessageSquare,   label: 'Fighter Messages', roles: ['ADMIN','RECEPTIONIST'] as Role[] },
       { href: '/dashboard/payroll',    icon: DollarSign,      label: 'Payroll',          roles: ['ADMIN'] as Role[] },
       { href: '/dashboard/inventory',  icon: Package,         label: 'Store & Inventory',roles: ['ADMIN','RECEPTIONIST'] as Role[] },
     ],

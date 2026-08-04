@@ -12,7 +12,7 @@ import { disciplineLabel } from '@/lib/categories'
 import Pagination from '@/components/dashboard/Pagination'
 import toast from 'react-hot-toast'
 
-interface ClassInfo { id: string; name: string; category?: string | null; daysOfWeek: string[]; price: number; durationDays: number; status: string; type?: string }
+interface ClassInfo { id: string; name: string; category?: string | null; daysOfWeek: string[]; price: number; durationDays: number; status: string; type?: string; offers?: { id: string; months: number; price: number; label?: string | null }[] }
 interface MonthSummary { attended: number; excused: number; absent: number; remaining: number; sessionsAllowed: number }
 interface Enrollment {
   id: string; classId: string; class: ClassInfo; status: string
@@ -148,7 +148,7 @@ function PaymentMethodFields({ method, onMethod, proof, onProof }: { method: str
 // class or renewing a subscription. For PRIVATE (session-based) classes it also
 // collects how many sessions are being purchased, since price = perSession * sessions.
 function DiscountAndPricingStep({
-  cls, sessionCount, onSessionCount, discountType, onDiscountType, discountValue, onDiscountValue,
+  cls, sessionCount, onSessionCount, discountType, onDiscountType, discountValue, onDiscountValue, offerId, onOfferId,
 }: {
   cls: ClassInfo | null | undefined
   sessionCount: number
@@ -157,10 +157,14 @@ function DiscountAndPricingStep({
   onDiscountType: (v: string) => void
   discountValue: string
   onDiscountValue: (v: string) => void
+  offerId?: string
+  onOfferId?: (v: string) => void
 }) {
   if (!cls) return null
   const isPrivate = cls.type === 'PRIVATE'
-  const base = isPrivate ? cls.price * Math.max(1, sessionCount || 1) : cls.price
+  const offers = cls.offers || []
+  const selectedOffer = offers.find(o => o.id === offerId)
+  const base = selectedOffer ? selectedOffer.price : isPrivate ? cls.price * Math.max(1, sessionCount || 1) : cls.price
   const value = Number(discountValue) || 0
   const discountAmount = discountType === 'PERCENTAGE' ? base * (Math.min(Math.max(value, 0), 100) / 100)
     : discountType === 'FIXED' ? Math.max(value, 0) : 0
@@ -168,6 +172,26 @@ function DiscountAndPricingStep({
 
   return (
     <div className="space-y-3 bg-dark-750 border border-dark-600 rounded-xl p-3">
+      {!isPrivate && offers.length > 0 && onOfferId && (
+        <div>
+          <label className="label">Subscription Type</label>
+          <div className="grid grid-cols-2 gap-1.5 mb-2">
+            <button type="button" onClick={() => onOfferId('')}
+              className={cn('py-1.5 rounded-lg text-xs font-medium border transition-all', !offerId ? 'bg-primary-400/10 border-primary-400/30 text-primary-400' : 'border-dark-600 text-dark-400')}>
+              Regular Monthly
+            </button>
+            <button type="button" onClick={() => onOfferId(offers[0].id)}
+              className={cn('py-1.5 rounded-lg text-xs font-medium border transition-all', offerId ? 'bg-primary-400/10 border-primary-400/30 text-primary-400' : 'border-dark-600 text-dark-400')}>
+              Existing Offer
+            </button>
+          </div>
+          {offerId && (
+            <select value={offerId} onChange={e => onOfferId(e.target.value)} className="input">
+              {offers.map(o => <option key={o.id} value={o.id}>{o.label ? `${o.label} — ` : ''}{o.months} months for {formatCurrency(o.price)}</option>)}
+            </select>
+          )}
+        </div>
+      )}
       {isPrivate && (
         <div>
           <label className="label">Number of Sessions</label>
@@ -227,12 +251,15 @@ export default function FightersPage() {
   const [renewSessionCount, setRenewSessionCount] = useState(1)
   const [renewDiscountType, setRenewDiscountType] = useState('NONE')
   const [renewDiscountValue, setRenewDiscountValue] = useState('')
+  const [renewOfferId, setRenewOfferId] = useState('')
   const [addSessionCount, setAddSessionCount] = useState(1)
   const [addDiscountType, setAddDiscountType] = useState('NONE')
   const [addDiscountValue, setAddDiscountValue] = useState('')
+  const [addOfferId, setAddOfferId] = useState('')
   const [addClassSessionCount, setAddClassSessionCount] = useState(1)
   const [addClassDiscountType, setAddClassDiscountType] = useState('NONE')
   const [addClassDiscountValue, setAddClassDiscountValue] = useState('')
+  const [addClassOfferId, setAddClassOfferId] = useState('')
   const [switchTarget, setSwitchTarget] = useState<Enrollment | null>(null)
   const [switchToClassId, setSwitchToClassId] = useState('')
   const [switching, setSwitching] = useState(false)
@@ -322,13 +349,13 @@ export default function FightersPage() {
     const res = await fetch('/api/members', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       ...addForm,
       sessionCount: selectedClass?.type === 'PRIVATE' ? addSessionCount : undefined,
-      discountType: addDiscountType, discountValue: addDiscountValue,
+      discountType: addDiscountType, discountValue: addDiscountValue, offerId: addOfferId || undefined,
     }) })
     if (res.ok) {
       toast.success('Fighter added!')
       setShowAdd(false)
       setAddForm(f => ({ ...f, firstName: '', lastName: '', email: '', phone: '', parentPhone: '', photo: '', birthYear: '', paymentMethod: '', proofPhoto: '', notes: '', branchId: '' }))
-      setAddSessionCount(1); setAddDiscountType('NONE'); setAddDiscountValue('')
+      setAddSessionCount(1); setAddDiscountType('NONE'); setAddDiscountValue(''); setAddOfferId('')
       loadList()
     } else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to add fighter') }
   }
@@ -340,11 +367,11 @@ export default function FightersPage() {
     const res = await fetch('/api/class-enrollments', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       memberId: selected.id, ...addClassForm,
       sessionCount: selectedClass?.type === 'PRIVATE' ? addClassSessionCount : undefined,
-      discountType: addClassDiscountType, discountValue: addClassDiscountValue,
+      discountType: addClassDiscountType, discountValue: addClassDiscountValue, offerId: addClassOfferId || undefined,
     }) })
     if (res.ok) {
       toast.success('Signed into class!'); setShowAddClass(false); refreshSelected(); loadList()
-      setAddClassSessionCount(1); setAddClassDiscountType('NONE'); setAddClassDiscountValue('')
+      setAddClassSessionCount(1); setAddClassDiscountType('NONE'); setAddClassDiscountValue(''); setAddClassOfferId('')
     } else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to sign into class') }
   }
 
@@ -361,13 +388,13 @@ export default function FightersPage() {
     const res = await fetch(`/api/class-enrollments?id=${renewTarget.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
       _action: 'renew', paymentMethod: renewPaymentMethod, proofPhoto: renewProof,
       sessionCount: renewTarget.class?.type === 'PRIVATE' ? renewSessionCount : undefined,
-      discountType: renewDiscountType, discountValue: renewDiscountValue,
+      discountType: renewDiscountType, discountValue: renewDiscountValue, offerId: renewOfferId || undefined,
     }) })
     const data = await res.json().catch(() => ({}))
     setRenewing(false)
     if (res.ok) {
       toast.success(data.message || 'Renewed'); setRenewTarget(null); setRenewPaymentMethod(''); setRenewProof('')
-      setRenewSessionCount(1); setRenewDiscountType('NONE'); setRenewDiscountValue('')
+      setRenewSessionCount(1); setRenewDiscountType('NONE'); setRenewDiscountValue(''); setRenewOfferId('')
       refreshSelected(); loadList()
     } else toast.error(data.error || 'Failed to renew')
   }
@@ -505,6 +532,7 @@ export default function FightersPage() {
                       sessionCount={addSessionCount} onSessionCount={setAddSessionCount}
                       discountType={addDiscountType} onDiscountType={setAddDiscountType}
                       discountValue={addDiscountValue} onDiscountValue={setAddDiscountValue}
+                      offerId={addOfferId} onOfferId={setAddOfferId}
                     />
                     <PaymentMethodFields
                       method={addForm.paymentMethod} onMethod={v => setAddForm(f => ({ ...f, paymentMethod: v }))}
@@ -757,6 +785,7 @@ export default function FightersPage() {
                     sessionCount={addClassSessionCount} onSessionCount={setAddClassSessionCount}
                     discountType={addClassDiscountType} onDiscountType={setAddClassDiscountType}
                     discountValue={addClassDiscountValue} onDiscountValue={setAddClassDiscountValue}
+                    offerId={addClassOfferId} onOfferId={setAddClassOfferId}
                   />
                 )}
                 <PaymentMethodFields
@@ -791,6 +820,7 @@ export default function FightersPage() {
                   sessionCount={renewSessionCount} onSessionCount={setRenewSessionCount}
                   discountType={renewDiscountType} onDiscountType={setRenewDiscountType}
                   discountValue={renewDiscountValue} onDiscountValue={setRenewDiscountValue}
+                  offerId={renewOfferId} onOfferId={setRenewOfferId}
                 />
                 <PaymentMethodFields method={renewPaymentMethod} onMethod={setRenewPaymentMethod} proof={renewProof} onProof={setRenewProof} />
               </div>
