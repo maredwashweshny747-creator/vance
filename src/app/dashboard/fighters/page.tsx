@@ -269,9 +269,20 @@ export default function FightersPage() {
   const [switching, setSwitching] = useState(false)
   const [qrOpenFor, setQrOpenFor] = useState<string | null>(null)
   const [photoZoom, setPhotoZoom] = useState<{ photo: string; name: string } | null>(null)
+  const [sessionsModal, setSessionsModal] = useState<any>(null)
+  const [sessionsLoading, setSessionsLoading] = useState(false)
+
+  async function openSessionsModal(enrollmentId: string) {
+    setSessionsModal({ loading: true })
+    setSessionsLoading(true)
+    const res = await fetch(`/api/class-enrollments?id=${enrollmentId}`)
+    setSessionsLoading(false)
+    if (res.ok) setSessionsModal(await res.json())
+    else { setSessionsModal(null); toast.error('Failed to load sessions') }
+  }
   const [whatsappTemplate, setWhatsappTemplate] = useState('')
   const [editingFighter, setEditingFighter] = useState(false)
-  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '', phone: '', parentPhone: '', birthYear: '', branchId: '', notes: '' })
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '', phone: '', parentPhone: '', photo: '', birthYear: '', branchId: '', notes: '' })
   const [savingEdit, setSavingEdit] = useState(false)
   const { data: session } = useSession()
 
@@ -323,7 +334,7 @@ export default function FightersPage() {
       const m = await res.json()
       setSelected(m)
       setEditingFighter(false)
-      setEditForm({ firstName: m.firstName || '', lastName: m.lastName || '', email: m.email || '', phone: m.phone || '', parentPhone: m.parentPhone || '', birthYear: m.birthYear ? String(m.birthYear) : '', branchId: m.branchId || '', notes: m.notes || '' })
+      setEditForm({ firstName: m.firstName || '', lastName: m.lastName || '', email: m.email || '', phone: m.phone || '', parentPhone: m.parentPhone || '', photo: m.photo || '', birthYear: m.birthYear ? String(m.birthYear) : '', branchId: m.branchId || '', notes: m.notes || '' })
     }
   }
   function refreshSelected() { if (selected) openMember(selected.id) }
@@ -610,6 +621,7 @@ export default function FightersPage() {
                   </div>
                   {editingFighter ? (
                     <div className="space-y-2 pt-1">
+                      <PhotoPicker photo={editForm.photo} name={`${editForm.firstName} ${editForm.lastName}`} onChange={dataUrl => setEditForm(f => ({ ...f, photo: dataUrl }))} />
                       <div className="grid grid-cols-2 gap-2">
                         <div><label className="label text-xs">First Name</label><input value={editForm.firstName} onChange={e => setEditForm(f => ({ ...f, firstName: e.target.value }))} className="input py-2 text-sm" /></div>
                         <div><label className="label text-xs">Last Name</label><input value={editForm.lastName} onChange={e => setEditForm(f => ({ ...f, lastName: e.target.value }))} className="input py-2 text-sm" /></div>
@@ -691,10 +703,10 @@ export default function FightersPage() {
                               <div className="flex items-center justify-center gap-1 text-crimson-400"><XCircle size={12}/><span className="text-lg font-bold">{e.monthSummary.absent}</span></div>
                               <div className="text-dark-400 text-[10px] uppercase tracking-wide mt-0.5">Absent</div>
                             </div>
-                            <div className="bg-dark-700 border border-dark-600 rounded-lg py-2 text-center">
+                            <button type="button" onClick={() => openSessionsModal(e.id)} className="bg-dark-700 border border-dark-600 rounded-lg py-2 text-center hover:border-primary-400/40 transition-colors">
                               <div className="flex items-center justify-center gap-1 text-white"><Hourglass size={12}/><span className="text-lg font-bold">{e.monthSummary.remaining}</span></div>
                               <div className="text-dark-400 text-[10px] uppercase tracking-wide mt-0.5">Remaining</div>
-                            </div>
+                            </button>
                           </div>
                         )}
 
@@ -873,6 +885,44 @@ export default function FightersPage() {
                 <button onClick={confirmSwitch} disabled={switching || !switchToClassId} className="flex-1 justify-center bg-blue-500 hover:bg-blue-400 text-white font-bold py-3 px-6 rounded-lg transition-colors disabled:opacity-50 text-sm">
                   {switching ? 'Switching…' : 'Confirm Switch'}
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Session-by-session breakdown */}
+      <AnimatePresence>
+        {sessionsModal && (
+          <div className="fixed inset-0 z-[65] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm" onClick={() => setSessionsModal(null)}>
+            <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              onClick={e => e.stopPropagation()} className="bg-dark-800 border border-dark-600 rounded-2xl p-6 w-full max-w-md max-h-[80vh] flex flex-col">
+              <div className="flex items-center justify-between mb-1">
+                <h3 className="font-display text-xl text-white">{sessionsLoading ? 'Loading…' : sessionsModal.class?.name}</h3>
+                <button onClick={() => setSessionsModal(null)} className="text-dark-400 hover:text-white"><X size={18}/></button>
+              </div>
+              {!sessionsLoading && (
+                <p className="text-dark-400 text-xs mb-4">
+                  {sessionsModal.isPrivate
+                    ? `${sessionsModal.attended} of ${sessionsModal.sessionCount} sessions used — ${sessionsModal.remaining} remaining (booked as you go)`
+                    : `${sessionsModal.attended} attended, ${sessionsModal.remaining} upcoming of ${sessionsModal.sessionsAllowed} sessions this cycle`}
+                </p>
+              )}
+              <div className="overflow-y-auto space-y-1.5 pr-1">
+                {sessionsLoading ? [...Array(4)].map((_,i) => <div key={i} className="h-10 skeleton rounded-lg"/>) :
+                  sessionsModal.sessions?.length === 0 ? <p className="text-dark-500 text-sm py-8 text-center">No sessions scheduled yet.</p> :
+                  sessionsModal.sessions?.map((s: any, i: number) => {
+                    const badge = s.status === 'ATTENDED' ? 'text-primary-400 bg-primary-400/10 border-primary-400/20'
+                      : s.status === 'EXCUSED' ? 'text-blue-400 bg-blue-400/10 border-blue-400/20'
+                      : s.status === 'UPCOMING' ? 'text-dark-400 bg-dark-700 border-dark-600'
+                      : 'text-crimson-400 bg-crimson-400/10 border-crimson-400/20' // ABSENT or MISSED
+                    return (
+                      <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-dark-750 border border-dark-700">
+                        <span className="text-white text-sm">{new Date(s.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                        <span className={cn('badge text-xs', badge)}>{s.status === 'MISSED' ? 'Absent' : s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
+                      </div>
+                    )
+                  })}
               </div>
             </motion.div>
           </div>

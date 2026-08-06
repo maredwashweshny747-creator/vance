@@ -35,6 +35,15 @@ export default function ClassAttendancePage() {
   const [loading, setLoading] = useState(true)
   const [excuseTarget, setExcuseTarget] = useState<RosterEntry | null>(null)
   const [excuseReason, setExcuseReason] = useState('')
+  const [monthSessions, setMonthSessions] = useState<any[]>([])
+  const [allCoaches, setAllCoaches] = useState<any[]>([])
+  const [coverPicker, setCoverPicker] = useState(false)
+
+  function loadMonth() {
+    const d = new Date(date)
+    fetch(`/api/class-attendance?classId=${classId}&month=${d.getMonth()+1}&year=${d.getFullYear()}`)
+      .then(r => r.ok ? r.json() : null).then(d => { if (d) setMonthSessions(d.sessions || []) }).catch(() => {})
+  }
 
   function load() {
     setLoading(true)
@@ -43,6 +52,19 @@ export default function ClassAttendancePage() {
       .then(d => { if (d) { setCls(d.class); setRoster(d.roster) } setLoading(false) })
       .catch(() => setLoading(false))
     fetch(`/api/coach-attendance?classId=${classId}`).then(r => r.ok ? r.json() : null).then(d => { if (d) setCoachInfo(d) }).catch(() => {})
+    loadMonth()
+  }
+
+  useEffect(() => {
+    fetch('/api/coach-attendance').then(r => r.ok ? r.json() : []).then(d => setAllCoaches(Array.isArray(d) ? d : [])).catch(() => {})
+  }, [])
+
+  async function assignCover(coverCoachId: string) {
+    if (!coachInfo?.coach) return
+    setMarkingCoach(true)
+    const res = await fetch('/api/coach-attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coachId: coachInfo.coach.id, classId, date, status: 'ATTENDED', coverCoachId, method: 'MANUAL' }) })
+    setMarkingCoach(false); setCoverPicker(false)
+    if (res.ok) { toast.success('Cover coach assigned'); load() } else toast.error('Failed to save')
   }
 
   async function markCoach(status: string) {
@@ -110,15 +132,59 @@ export default function ClassAttendancePage() {
             </div>
             {(() => {
               const todaysMark = (coachInfo as any).marks?.find((m: any) => toDateInput(new Date(m.date)) === date)
-              return todaysMark ? (
-                <span className={cn('badge text-xs flex-shrink-0', todaysMark.status === 'ATTENDED' ? 'text-primary-400 bg-primary-400/10 border-primary-400/20' : 'text-crimson-400 bg-crimson-400/10 border-crimson-400/20')}>{todaysMark.status}</span>
-              ) : (
+              if (!todaysMark) return (
                 <div className="flex gap-1.5 flex-shrink-0">
                   <button onClick={() => markCoach('ATTENDED')} disabled={markingCoach} className="px-2.5 py-1.5 rounded-lg bg-primary-400/10 border border-primary-400/20 text-primary-400 text-xs hover:bg-primary-400/20">Attended</button>
                   <button onClick={() => markCoach('ABSENT')} disabled={markingCoach} className="px-2.5 py-1.5 rounded-lg bg-crimson-500/10 border border-crimson-500/20 text-crimson-400 text-xs hover:bg-crimson-500/20">Absent</button>
                 </div>
               )
+              if (todaysMark.status === 'ABSENT') {
+                if (todaysMark.coveredBy) return (
+                  <span className="badge text-xs flex-shrink-0 text-blue-400 bg-blue-400/10 border-blue-400/20">Covered by {todaysMark.coveredBy.name}</span>
+                )
+                return <button onClick={() => setCoverPicker(true)} disabled={markingCoach} className="px-2.5 py-1.5 rounded-lg bg-dark-600 border border-dark-500 text-dark-300 text-xs hover:bg-dark-500 flex-shrink-0">Assign Cover Coach</button>
+              }
+              return <span className="badge text-xs flex-shrink-0 text-primary-400 bg-primary-400/10 border-primary-400/20">{todaysMark.status}</span>
             })()}
+          </div>
+          {/* Cover coach picker */}
+          {coverPicker && (
+            <div className="mt-3 pt-3 border-t border-dark-700">
+              <p className="text-dark-400 text-xs mb-2">Who&apos;s covering {coachInfo.coach.firstName}?</p>
+              <div className="flex flex-wrap gap-1.5">
+                {allCoaches.filter(c => c.coachId !== coachInfo.coach.id).map(c => (
+                  <button key={c.coachId} onClick={() => assignCover(c.coachId)} disabled={markingCoach}
+                    className="px-2.5 py-1.5 rounded-lg bg-dark-700 border border-dark-600 text-white text-xs hover:border-primary-400/40">
+                    {c.firstName} {c.lastName}
+                  </button>
+                ))}
+                <button onClick={() => setCoverPicker(false)} className="px-2.5 py-1.5 rounded-lg text-dark-500 text-xs hover:text-white">Cancel</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* This month's sessions — click any to manage that specific date */}
+      {monthSessions.length > 0 && (
+        <div className="bg-dark-800 border border-dark-600 rounded-2xl p-4">
+          <h2 className="text-white font-semibold text-sm mb-3">This Month&apos;s Sessions ({monthSessions.length})</h2>
+          <div className="flex gap-2 overflow-x-auto pb-1">
+            {monthSessions.map((s: any) => {
+              const iso = toDateInput(new Date(s.date))
+              const isSelected = iso === date
+              return (
+                <button key={iso} onClick={() => setDate(iso)}
+                  className={cn('flex-shrink-0 flex flex-col items-center gap-1 px-3 py-2 rounded-xl border min-w-[64px] transition-all',
+                    isSelected ? 'bg-primary-400/10 border-primary-400/40' : 'bg-dark-750 border-dark-700 hover:border-dark-600')}>
+                  <span className={cn('text-[10px] uppercase tracking-wide', isSelected ? 'text-primary-400' : 'text-dark-500')}>{new Date(s.date).toLocaleDateString(undefined, { weekday: 'short' })}</span>
+                  <span className="text-white text-sm font-bold">{new Date(s.date).getDate()}</span>
+                  <span className={cn('w-1.5 h-1.5 rounded-full', s.attendanceTaken ? 'bg-primary-400' : 'bg-dark-600')} title={s.attendanceTaken ? 'Attendance taken' : 'Not yet taken'} />
+                  {s.coachStatus === 'ABSENT' && !s.coachCovered && <span className="w-1.5 h-1.5 rounded-full bg-crimson-400" title="Coach absent" />}
+                  {s.coachCovered && <span className="w-1.5 h-1.5 rounded-full bg-blue-400" title="Covered" />}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}

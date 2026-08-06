@@ -32,7 +32,97 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
-## 2026-08-04 — Claude (chat) — Bug-fix round: photo zoom on Fighters page, private-class offers, offer remaining-sessions bug, search/filter bugs, cover-coach gating, payroll split
+## 2026-08-04 (2) — Claude (chat) — Performance fix (N+1 batching), real session dates, edit photo, cover coach wired into Classes -> Manage Attendance
+
+**Changed:**
+- **Performance — found and fixed the main slowness cause**: the Fighters
+  list endpoint (`/api/members` GET) was running a sequential `for` loop
+  doing one DB round-trip *per enrollment* to check expiry status
+  (`checkAndExpireEnrollment`, which does its own `count()` + maybe an
+  `update()`) — for a roster of a few hundred fighters at ~1.3
+  enrollments each, that's 300+ blocking sequential queries on every
+  single page load. New `checkAndExpireEnrollmentsBatch()` in
+  `src/lib/enrollment.ts` replaces that with exactly 2 queries total (one
+  `groupBy` for every enrollment's attended count, one `updateMany` for
+  whichever need to flip to EXPIRED). Wired into the Fighters list, the
+  single-fighter detail view, and the Classes → Manage Attendance
+  roster — the three places that were looping per-enrollment before.
+  The singular `checkAndExpireEnrollment` is kept for genuinely
+  single-enrollment call sites (portal, single check-in) where batching
+  wouldn't help.
+- **Real session dates, not just a count**: new `generateSessionDates()`
+  in `src/lib/sessions.ts` — given a class's weekly schedule (or its
+  one-time `sessionDate`), returns every actual calendar date its
+  sessions land on within a range. This is what "2 sessions/week" turns
+  into concrete dates like Sun 8/4 and Tue 8/6.
+  - New `GET /api/class-enrollments?id=<enrollmentId>` returns every
+    session for that specific subscription with its real date and status
+    (Attended/Excused/Upcoming/Missed — a past date with no mark reads as
+    Missed). Private (session-pack) enrollments get the actual booked
+    dates instead, since those aren't on a fixed weekly calendar.
+  - Fighters page: the "Remaining" tile is now a button that opens a
+    modal listing every session with its date and status.
+  - Classes → Manage Attendance: new "This Month's Sessions" strip above
+    the date navigator — every scheduled date this month as a clickable
+    chip (dot indicators for attendance-taken / coach-absent / covered),
+    so all of a class's sessions for the month are visible and each is
+    individually manageable, not just prev/next-day at a time.
+- **Cover coach connected into Classes → Manage Attendance** (previously
+  only existed on the Attendance → Coaches page): the coach card on the
+  class's attendance page now shows "Assign Cover Coach" once the
+  assigned coach is marked Absent for that date, and "Covered by X" once
+  someone takes over — same backend (`coverCoachId` on
+  `POST /api/coach-attendance`), just exposed here too.
+  `GET /api/coach-attendance?classId=` now also returns each mark's
+  `coveredBy` so the UI can tell "absent, no cover yet" from "absent,
+  already covered" instead of endlessly re-prompting.
+- **Edit photo**: the fighter edit form was missing the photo picker
+  entirely (create form had it, edit didn't) — added the same
+  `PhotoPicker` component there. Backend already accepted `photo` on
+  PATCH, so no API change needed.
+
+**Why:** four user reports — the app being slow on every tab, wanting to
+see actual session dates (not just a count) both per-fighter and per-
+class-per-month with individually manageable attendance, no way to edit
+a fighter's photo, and cover-coach assignment missing from the
+Classes-side attendance page even though it existed on the
+Attendance-side one.
+
+**Watch out for:**
+- `checkAndExpireEnrollmentsBatch` expects each enrollment to already
+  have `.class` populated (via `include`) — every call site does this,
+  but a future caller building a partial/manual enrollment array needs
+  to include it too or the sessions-allowed calc will silently see an
+  empty schedule.
+- Several `Map`/`.find()` lookups over raw Prisma query results
+  (`groupBy`'s `_count._all` in particular) needed explicit type
+  annotations to compile — without a generated Prisma client in this
+  sandbox, that field infers as `{}` instead of `number`. Not a runtime
+  bug (a real generated client types it correctly), but if `tsc` ever
+  flags something similar after a schema change, this is why — cast the
+  Map explicitly rather than assuming a real bug.
+- Did not batch `attachMonthSummaries`'s per-enrollment triple-count
+  query (attended/excused/absent) — it's only called for the
+  single-fighter detail view (2-3 enrollments typically), a much smaller
+  win than the list-page fix, so left alone given the time budget. Worth
+  revisiting if a fighter with unusually many enrollments is ever slow to
+  open.
+- The Classes → Manage Attendance session strip and the fighter-facing
+  "remaining sessions" modal both call `generateSessionDates()`
+  independently rather than sharing one cached result — fine at current
+  scale, but if a class's month view or a fighter's very long enrollment
+  history ever needs to render many dates, consider paginating rather
+  than generating the whole range in one response.
+
+**Verified with:** `tsc --noEmit` in the working directory AND an
+isolated re-extraction with `node_modules` symlinked in — identical
+result both places (same single pre-existing unrelated `TS2322`, zero
+new errors). Did not have DB access in this sandbox to actually measure
+a before/after load-time improvement on the Fighters page — the fix is
+verified by query-count reasoning (N round-trips → 2), not a live
+benchmark. Worth confirming the perceived speed difference locally.
+
+---
 
 **Changed:**
 - **Fighter photo zoom (Fighters page, not just Portal)**: `Avatar` component

@@ -4,11 +4,61 @@ import { getSessionAndGym } from '@/lib/getGym'
 import { sessionsAllowedForCycle } from '@/lib/utils'
 import { baseAmountForClass, applyDiscount } from '@/lib/payment'
 
+import { generateSessionDates } from '@/lib/sessions'
+
 function calcEndDate(start: Date, durationDays: number): Date {
   const d = new Date(start)
   d.setDate(d.getDate() + (durationDays || 30))
   return d
 }
+
+// GET ?id=<enrollmentId> — every session this enrollment covers, as real calendar
+// dates (not just a count), each annotated with its actual attendance status.
+export async function GET(req: NextRequest) {
+  const result = await getSessionAndGym()
+  if ('error' in result) return result.error
+  const { gym } = result
+  const id = new URL(req.url).searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+
+  const enr = await prisma.classEnrollment.findFirst({ where: { id, member: { gymId: gym.id } }, include: { class: true } })
+  if (!enr) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const marks = await prisma.classAttendance.findMany({ where: { enrollmentId: id }, orderBy: { date: 'asc' } })
+  const markByDate = new Map<string, any>(marks.map((m: any) => [startOfDayISO(m.date), m]))
+
+  if (enr.class.type === 'PRIVATE') {
+    // Private sessions are booked ad-hoc, not on a fixed weekly calendar — list what's
+    // actually happened, plus how many unscheduled sessions are left in the package.
+    const total = enr.sessionCount || 0
+    const attendedCount = marks.filter((m: any) => m.status === 'ATTENDED').length
+    const sessions = marks.map((m: any) => ({ date: m.date, status: m.status, reason: m.reason || null }))
+    return NextResponse.json({ class: { id: enr.class.id, name: enr.class.name, type: 'PRIVATE' }, isPrivate: true, sessionCount: total, attended: attendedCount, remaining: Math.max(0, total - attendedCount), sessions })
+  }
+
+  const today = startOfDay(new Date())
+  const rangeEnd = enr.endDate ? new Date(enr.endDate) : today
+  const dates = generateSessionDates(enr.class, enr.startDate, rangeEnd)
+
+  const sessions = dates.map(d => {
+    const mark = markByDate.get(startOfDayISO(d))
+    let status: string
+    if (mark) status = mark.status
+    else status = d > today ? 'UPCOMING' : 'MISSED' // past + unmarked reads as a missed session
+    return { date: d, status, reason: mark?.reason || null }
+  })
+
+  const attended = sessions.filter(s => s.status === 'ATTENDED').length
+  return NextResponse.json({
+    class: { id: enr.class.id, name: enr.class.name, type: enr.class.type },
+    isPrivate: false,
+    sessionsAllowed: sessions.length, attended, remaining: sessions.filter(s => s.status === 'UPCOMING').length,
+    sessions,
+  })
+}
+
+function startOfDay(d: Date) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
+function startOfDayISO(d: Date | string) { return startOfDay(new Date(d)).toISOString() }
 
 // POST: sign a fighter into a class (their initial enrollment, or an additional discipline).
 // For PRIVATE (session-based) classes, body.sessionCount is the number of sessions purchased

@@ -28,10 +28,19 @@ export async function GET(req: NextRequest) {
     const assigned = scheduledOccurrencesThisMonth(cls)
     const attended = await prisma.coachAttendance.count({ where: { coachId: cls.coachId!, classId, status: 'ATTENDED', date: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) } } })
     const marks = await prisma.coachAttendance.findMany({ where: { coachId: cls.coachId!, classId }, orderBy: { date: 'desc' } })
+    // Cover-coach rows for this class are separate CoachAttendance rows (coachId = the
+    // cover, not the assigned coach) — fetch them too so an absent-but-covered date
+    // shows who covered instead of endlessly prompting to assign a cover.
+    const coverMarks = await prisma.coachAttendance.findMany({
+      where: { classId, assignedCoachId: cls.coachId, coachId: { not: cls.coachId! } },
+      include: { coach: true },
+    })
+    const coverByDate = new Map(coverMarks.map(m => [startOfDay(m.date).toISOString(), { id: m.coach.id, name: `${m.coach.firstName} ${m.coach.lastName}` }]))
+    const marksWithCover = marks.map(m => ({ ...m, coveredBy: coverByDate.get(startOfDay(m.date).toISOString()) || null }))
 
     return NextResponse.json({
       coach: { id: cls.coach.id, firstName: cls.coach.firstName, lastName: cls.coach.lastName },
-      assigned, attended, missed: Math.max(0, assigned - attended), marks,
+      assigned, attended, missed: Math.max(0, assigned - attended), marks: marksWithCover,
     })
   }
 

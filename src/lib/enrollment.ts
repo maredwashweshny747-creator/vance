@@ -69,6 +69,50 @@ export async function generateFighterId(gymId: string): Promise<string> {
  * Whichever comes first. Call this whenever enrollments are read/listed so
  * status stays accurate without a background job.
  */
+/**
+ * Batched version of checkAndExpireEnrollment for list pages (fighters roster, portal,
+ * etc.) where the naive per-enrollment version was doing N sequential DB round-trips
+ * (one count() + maybe one update() PER enrollment, awaited one at a time in a loop) —
+ * for a roster of a few hundred fighters with ~1.3 enrollments each that's 300+ blocking
+ * queries on every single page load, which is the main reason those pages were slow.
+ * This does it in exactly 2 queries total: one groupBy for every enrollment's attended
+ * count, one updateMany for whichever ones need to flip to EXPIRED.
+ */
+export async function checkAndExpireEnrollmentsBatch(
+  enrollments: { id: string; status: string; startDate: Date; endDate: Date | null; sessionCount?: number | null; class: { daysOfWeek: string[]; durationDays: number; isOneTime?: boolean; type?: string } }[]
+): Promise<Map<string, string>> {
+  const statusMap = new Map<string, string>()
+  const activeOnes = enrollments.filter(e => e.status === 'ACTIVE')
+  if (activeOnes.length === 0) {
+    for (const e of enrollments) statusMap.set(e.id, e.status)
+    return statusMap
+  }
+
+  const counts = await prisma.classAttendance.groupBy({
+    by: ['enrollmentId'],
+    where: { enrollmentId: { in: activeOnes.map(e => e.id) }, status: 'ATTENDED' },
+    _count: { _all: true },
+  })
+  const countMap = new Map<string, number>(counts.map((c: any) => [c.enrollmentId, c._count._all as number]))
+
+  const now = new Date()
+  const toExpire: string[] = []
+  for (const e of enrollments) {
+    if (e.status !== 'ACTIVE') { statusMap.set(e.id, e.status); continue }
+    const daysPassed = e.endDate ? now > new Date(e.endDate) : false
+    const attended = countMap.get(e.id) || 0
+    const sessionsAllowed = sessionsAllowedForEnrollment(e, e.class)
+    const sessionsUsedUp = sessionsAllowed > 0 && attended >= sessionsAllowed
+    if (daysPassed || sessionsUsedUp) { toExpire.push(e.id); statusMap.set(e.id, 'EXPIRED') }
+    else statusMap.set(e.id, 'ACTIVE')
+  }
+
+  if (toExpire.length > 0) {
+    await prisma.classEnrollment.updateMany({ where: { id: { in: toExpire } }, data: { status: 'EXPIRED' } })
+  }
+  return statusMap
+}
+
 export async function checkAndExpireEnrollment(enrollment: { id: string; status: string; startDate: Date; endDate: Date | null; sessionCount?: number | null }, cls: { daysOfWeek: string[]; durationDays: number; isOneTime?: boolean; type?: string }) {
   if (enrollment.status !== 'ACTIVE') return enrollment.status
 

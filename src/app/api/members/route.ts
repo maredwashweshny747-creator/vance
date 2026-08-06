@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionAndGym } from '@/lib/getGym'
-import { checkAndExpireEnrollment, sessionsAllowedForEnrollment } from '@/lib/enrollment'
+import { checkAndExpireEnrollmentsBatch, sessionsAllowedForEnrollment } from '@/lib/enrollment'
 import { phoneValidationError } from '@/lib/utils'
 import { baseAmountForClass, applyDiscount } from '@/lib/payment'
 
@@ -56,10 +56,8 @@ export async function GET(req: NextRequest) {
     })
     if (!member) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    for (const e of member.enrollments) {
-      const newStatus = await checkAndExpireEnrollment(e, e.class)
-      e.status = newStatus as any
-    }
+    const statusMap = await checkAndExpireEnrollmentsBatch(member.enrollments)
+    for (const e of member.enrollments) e.status = (statusMap.get(e.id) || e.status) as any
 
     const enrollmentsWithSummary = await attachMonthSummaries(member.enrollments)
     const [memberWithName] = await withUserNames([member], ['createdById'])
@@ -97,10 +95,10 @@ export async function GET(req: NextRequest) {
   })
 
   const withStatus = []
+  const allEnrollments = allMatching.flatMap(m => m.enrollments)
+  const statusMap = await checkAndExpireEnrollmentsBatch(allEnrollments)
   for (const m of allMatching) {
-    // checkAndExpireEnrollment already tells us the (possibly just-updated) status —
-    // no need to re-fetch the member's enrollments a second time to find out.
-    for (const e of m.enrollments) (e as any).status = await checkAndExpireEnrollment(e, e.class)
+    for (const e of m.enrollments) (e as any).status = statusMap.get(e.id) || e.status
     const overallStatus = m.enrollments.some(e => e.status === 'ACTIVE') ? 'ACTIVE'
       : m.enrollments.some(e => e.status === 'FROZEN') ? 'FROZEN'
       : m.enrollments.some(e => e.status === 'EXPIRED') ? 'EXPIRED'
