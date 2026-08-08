@@ -32,7 +32,56 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
-## 2026-08-05 — Claude (chat) — Freeze removed, excuse logic reworked, portal sessions calendar, payroll cover-fix
+## 2026-08-08 — Claude (chat) — Coach payroll semantics fixed (critical), portal login simplified, dashboard N+1 fixed, leads debounce bug fixed, indexes added
+
+### Files modified
+- `src/app/api/payroll/route.ts` — `countSessions` completely rewritten (see below). `countPlayersAttended` untouched (was already correct).
+- `src/app/api/analytics/route.ts` — eliminated ~32 sequential per-month/per-day queries, parallelized the rest.
+- `src/app/portal/page.tsx` + `src/app/api/portal/route.ts` — removed the Gym field from login.
+- `src/app/dashboard/leads/page.tsx` — fixed a missing search debounce (every keystroke was firing a request).
+- `prisma/schema.prisma` — new indexes (`Member.fighterId`, `Member.parentPhone`, three on `CoachAttendance`).
+
+### Database changes
+- **No destructive changes.** New indexes only: `Member.fighterId` (portal login now searches across gyms), `Member.parentPhone`, `CoachAttendance` gained `[classId, date]`, `[assignedCoachId]`, and `[coachId, status, date]` (all support real query patterns already in use — the payroll count, the cover-override lookup, and the manage-attendance month view). **Migration required** (index-only, safe, no data loss).
+
+### API changes
+- `GET /api/portal` — `fighterId` is now the only required param; `gym` is optional (kept for a possible future direct-link use case, never sent by the login form). If the Fighter ID matches more than one gym, returns a 409 with a clear message instead of guessing.
+- `GET /api/payroll?type=coachPayroll` — same shape, correct numbers now (see Coach Attendance below).
+- `GET /api/analytics` — same response shape, ~32 fewer database round-trips per call.
+
+### Coach Attendance — how it works now, exactly
+
+**This was the important fix.** I found that `countSessions()` — the function that actually computes a coach's payroll pay — was built on completely the wrong data source. It was counting fighter `ClassAttendance` rows for a coach's classes, not whether the coach themselves showed up. That means a Kickboxing class with 5 fighters checking in gave Ahmed **+5** payroll sessions for one class, not +1 — and it had no real concept of "did the coach attend" at all. This directly contradicted the spec you gave (and would have contradicted it even in the version of this app from several sessions ago — this bug predates this session).
+
+**Fixed**: `countSessions()` now counts `CoachAttendance` rows with `status: 'ATTENDED'` — one row per session actually conducted, full stop, regardless of how many fighters were in it.
+
+- **Normal attendance**: Ahmed marked ATTENDED for Kickboxing on a date → `CoachAttendance{ coachId: ahmed, classId, date, status: 'ATTENDED' }` → +1 for Ahmed. Not marked at all, or marked ABSENT with no cover → +0, correctly.
+- **Cover coach**: this was never actually "removed" — I checked both `src/app/dashboard/classes/[id]/attendance/page.tsx` and `src/app/dashboard/attendance/page.tsx` and the "Assign Cover Coach" UI and its backend (`coverCoachId` on `POST /api/coach-attendance`) are both intact from an earlier session. What made it *look* broken was the payroll bug above: because `CoachAttendance.coachId` is already always set to "whoever gets credit" (the cover coach's id when one's assigned, the assigned coach's id otherwise — that part of the design was already correct), the credit was being computed correctly in that table the whole time, but `countSessions()` was never reading from it. Fixing `countSessions()` to read `CoachAttendance` instead of `ClassAttendance` fixes this "for free" — no separate cover-specific code path was needed, because the attribution was already baked into which `coachId` the row was created under.
+- **Private sessions**: identical mechanism — `countSessions()` is called once per class type (`GROUP`/`PRIVATE`) with a `class.type` filter, same `CoachAttendance`-based counting either way. Cover works identically for private sessions.
+- **No double counting**: one `CoachAttendance` row per `(coachId, classId, date)` (enforced by a DB unique constraint), so a session can only ever be credited once, to exactly one coach.
+- **`countPlayersAttended`** (a *different* stat — "how many fighters showed up to this coach's classes," used for the stats display, not pay) was already cover-aware from an earlier session and needed no changes; it's correctly still based on `ClassAttendance` since it's genuinely about fighters, not sessions.
+
+### Fighter Portal
+Login form now has a single field: Fighter ID. The "Gym ID" input and its icon/state were removed entirely. Under the hood, a gym is still technically resolved (Fighter IDs are only unique *within* a gym by schema design, `@@unique([gymId, fighterId])` — a global uniqueness change was out of scope here and would itself be a real migration risk to existing data), but the fighter never sees or types it: `/api/portal` now searches by Fighter ID alone across all gyms. In the rare case where two different gyms happen to have the same Fighter ID (both gyms default to prefix "20006"), the endpoint detects that ambiguity and returns a clear error asking the fighter to use their gym's direct portal link, rather than silently logging them into the wrong gym's data. **Flagging this explicitly**: it's a real trade-off inherent to removing the field, not a corner case I glossed over — worth deciding whether cross-gym Fighter ID collisions are acceptable at your expected scale, or whether gyms should be nudged toward distinct prefixes.
+
+### Performance
+- **Dashboard**: `/api/analytics` was doing 6 aggregate queries (revenue) + 12 count queries (member growth) + 14 count queries (check-in trend), all sequential/awaited one at a time — ~32 round-trips just for three trend charts, plus ~10 more for the KPI tiles. Rewrote to fetch each raw dataset once and bucket it in JS, with all independent queries run via a single `Promise.all` — down to 16 total queries, running concurrently instead of serially.
+- **Coach payroll**: the rewrite above also happens to be a major performance fix, not just a correctness one — the old `countSessions` had its own N+1 loop (a `gymClass.findUnique` + `classAttendance.count` per cover event) on top of being semantically wrong; the new version is a single indexed `COUNT` query per coach per class-type.
+- **Leads search debounce bug**: found and fixed a real instance of exactly what item 17 described — the search input was in the same `useEffect` dependency array as the data-fetching call with no debounce at all, so every keystroke fired an immediate request. Split into a separate 300ms-debounced effect, matching the pattern already correctly used on Fighters and Payments.
+- **Indexes**: added where a real query pattern needed them (see Database changes above) — not applied blindly across every field.
+- I did **not** re-run a full page-by-page audit of Fighters/Attendance/Classes/Payments pagination, search, or N+1 handling in this session — those were built and verified across several prior sessions (pagination, debounced search, batched expiry checks, single-query class revenue, etc. are already in place and I spot-checked several of them while working through this request without finding new issues). I'm not claiming to have re-verified every one of items 9–13 and 15–16 from scratch; I verified the dashboard and leads-search issues because I found them, and left already-working areas alone rather than re-touching code that wasn't broken.
+
+### Testing
+I do not have a running database or browser in this sandbox, so none of the following were executed end-to-end — they're verified by direct code inspection only, which I want to be explicit about rather than overclaim:
+- **Scenario A** (Ahmed attends → +1): confirmed by reading `countSessions()` — a single `ATTENDED` `CoachAttendance` row for Ahmed on that class/date is counted once.
+- **Scenario B** (Ahmed absent, no cover → +0): confirmed — no `ATTENDED` row exists for Ahmed, `countSessions()` finds nothing for him on that date.
+- **Scenario C** (Ahmed absent, Mohamed covers → Ahmed 0, Mohamed +1): confirmed by reading both the `coach-attendance` POST handler (which deletes Ahmed's `ATTENDED` row if one exists and creates the credited row under Mohamed's `coachId`) and the new `countSessions()` (which counts by `coachId`, so it naturally lands on Mohamed).
+- **Scenario D** (private session cover): confirmed — same code path, `classType: 'PRIVATE'` just changes the `class.type` filter in the same query.
+- **Portal login with only `200060001`**: confirmed by reading the updated form (single field, no gym input) and the updated API route (accepts `fighterId` alone).
+
+I was not able to click through the actual UI or hit the actual API in this sandbox, so please treat "confirmed by code inspection" as exactly that — a strong claim about what the code does, not a substitute for running it once against your real database before considering this closed.
+
+---
 
 **Changed:**
 - **Freeze completely removed**: `ClassEnrollment.freezeStartedAt`/

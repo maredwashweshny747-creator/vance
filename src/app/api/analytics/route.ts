@@ -8,21 +8,49 @@ export async function GET() {
   const { gym } = result
 
   const now = new Date()
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1)
+  const fourteenDaysAgo = new Date(); fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 13); fourteenDaysAgo.setHours(0, 0, 0, 0)
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+
+  const monthKey = (d: Date) => `${d.getFullYear()}-${d.getMonth()}`
+  const dayKey = (d: Date) => d.toISOString().slice(0, 10)
+
+  // Each of these used to be a 6- or 14-iteration loop of individual queries (revenue,
+  // member growth, and check-in trend combined were ~32 sequential DB round-trips on
+  // every dashboard load). Fetch each dataset once, bucket it in JS instead.
+  const [
+    paymentsForRevenue, allMemberCreatedAts, attendanceForTrend,
+    activeEnrollments, statusGroups, topClasses,
+    totalMembers, activeMembers, expiredMembers,
+    revenueThisMonth, revenueLastMonth, newThisMonth, totalRevenue,
+    totalLeads, convertedLeads, checkInsThisMonth,
+  ] = await Promise.all([
+    prisma.payment.findMany({ where: { gymId: gym.id, status: 'COMPLETED', paidAt: { gte: sixMonthsAgo } }, select: { paidAt: true, amount: true } }),
+    prisma.member.findMany({ where: { gymId: gym.id }, select: { createdAt: true } }),
+    prisma.classAttendance.findMany({ where: { class: { gymId: gym.id }, date: { gte: fourteenDaysAgo }, status: 'ATTENDED' }, select: { date: true } }),
+    prisma.classEnrollment.findMany({ where: { class: { gymId: gym.id }, status: 'ACTIVE' }, select: { class: { select: { name: true } } } }),
+    prisma.classEnrollment.groupBy({ by: ['status'], where: { class: { gymId: gym.id } }, _count: { status: true } }),
+    prisma.gymClass.findMany({ where: { gymId: gym.id }, include: { _count: { select: { enrollments: { where: { status: 'ACTIVE' } } } } }, orderBy: { enrollments: { _count: 'desc' } }, take: 5 }),
+    prisma.member.count({ where: { gymId: gym.id } }),
+    prisma.member.count({ where: { gymId: gym.id, enrollments: { some: { status: 'ACTIVE' } } } }),
+    prisma.member.count({ where: { gymId: gym.id, enrollments: { some: { status: 'EXPIRED' } } } }),
+    prisma.payment.aggregate({ where: { gymId: gym.id, status: 'COMPLETED', paidAt: { gte: thisMonthStart } }, _sum: { amount: true } }),
+    prisma.payment.aggregate({ where: { gymId: gym.id, status: 'COMPLETED', paidAt: { gte: lastMonthStart, lt: thisMonthStart } }, _sum: { amount: true } }),
+    prisma.member.count({ where: { gymId: gym.id, createdAt: { gte: thisMonthStart } } }),
+    prisma.payment.aggregate({ where: { gymId: gym.id, status: 'COMPLETED' }, _sum: { amount: true } }),
+    prisma.lead.count({ where: { gymId: gym.id } }),
+    prisma.lead.count({ where: { gymId: gym.id, status: 'CONVERTED' } }),
+    prisma.classAttendance.count({ where: { class: { gymId: gym.id }, date: { gte: thisMonthStart }, status: 'ATTENDED' } }),
+  ])
 
   // ── Revenue last 6 months ──────────────────────────────────────────────
   const revenueMonths: { month: string; revenue: number; count: number }[] = []
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
-    const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1)
-    const agg = await prisma.payment.aggregate({
-      where: { gymId: gym.id, status: 'COMPLETED', paidAt: { gte: d, lt: end } },
-      _sum: { amount: true }, _count: true,
-    })
-    revenueMonths.push({
-      month: d.toLocaleString('default', { month: 'short' }),
-      revenue: agg._sum.amount || 0,
-      count: agg._count,
-    })
+    const key = monthKey(d)
+    const inMonth = paymentsForRevenue.filter(p => p.paidAt && monthKey(new Date(p.paidAt)) === key)
+    revenueMonths.push({ month: d.toLocaleString('default', { month: 'short' }), revenue: inMonth.reduce((s, p) => s + p.amount, 0), count: inMonth.length })
   }
 
   // ── Member growth last 6 months ────────────────────────────────────────
@@ -30,83 +58,32 @@ export async function GET() {
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
     const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1)
-    const newCount = await prisma.member.count({ where: { gymId: gym.id, createdAt: { gte: d, lt: end } } })
-    const total = await prisma.member.count({ where: { gymId: gym.id, createdAt: { lt: end } } })
-    memberGrowth.push({ month: d.toLocaleString('default', { month: 'short' }), new: newCount, total })
+    const key = monthKey(d)
+    memberGrowth.push({
+      month: d.toLocaleString('default', { month: 'short' }),
+      new: allMemberCreatedAts.filter(m => monthKey(new Date(m.createdAt)) === key).length,
+      total: allMemberCreatedAts.filter(m => new Date(m.createdAt) < end).length,
+    })
   }
 
   // ── Class breakdown (counts active enrollments, not members — a fighter
   // training two disciplines counts once per class) ───────────────────────
-  const activeEnrollments = await prisma.classEnrollment.findMany({
-    where: { class: { gymId: gym.id }, status: 'ACTIVE' },
-    select: { class: { select: { name: true } } },
-  })
   const planCounts: Record<string, number> = {}
-  for (const e of activeEnrollments) {
-    const name = e.class.name
-    planCounts[name] = (planCounts[name] || 0) + 1
-  }
-  // Kept in the same { membershipType, _count.membershipType } shape the dashboard already reads
-  const membershipTypes = Object.entries(planCounts).map(([name, count]) => ({
-    membershipType: name, _count: { membershipType: count },
-  }))
+  for (const e of activeEnrollments) planCounts[e.class.name] = (planCounts[e.class.name] || 0) + 1
+  const membershipTypes = Object.entries(planCounts).map(([name, count]) => ({ membershipType: name, _count: { membershipType: count } }))
 
-  // ── Status breakdown (by enrollment status) ────────────────────────────
-  const statusGroups = await prisma.classEnrollment.groupBy({
-    by: ['status'], where: { class: { gymId: gym.id } },
-    _count: { status: true },
-  })
   const statusBreakdown = statusGroups.map(g => ({ membershipStatus: g.status, _count: { membershipStatus: g._count.status } }))
 
   // ── Check-ins per day last 14 days ─────────────────────────────────────
   const checkInTrend: { day: string; visits: number }[] = []
   for (let i = 13; i >= 0; i--) {
-    const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0,0,0,0)
-    const end = new Date(d); end.setDate(end.getDate() + 1)
-    const count = await prisma.classAttendance.count({
-      where: { class: { gymId: gym.id }, date: { gte: d, lt: end }, status: 'ATTENDED' },
+    const d = new Date(); d.setDate(d.getDate() - i); d.setHours(0, 0, 0, 0)
+    const key = dayKey(d)
+    checkInTrend.push({
+      day: d.toLocaleDateString('default', { weekday: 'short', month: 'short', day: 'numeric' }),
+      visits: attendanceForTrend.filter(a => dayKey(new Date(a.date)) === key).length,
     })
-    checkInTrend.push({ day: d.toLocaleDateString('default', { weekday:'short', month:'short', day:'numeric' }), visits: count })
   }
-
-  // ── Top classes by active enrollment ───────────────────────────────────
-  const topClasses = await prisma.gymClass.findMany({
-    where: { gymId: gym.id },
-    include: { _count: { select: { enrollments: { where: { status: 'ACTIVE' } } } } },
-    orderBy: { enrollments: { _count: 'desc' } },
-    take: 5,
-  })
-
-  // ── KPI summary ───────────────────────────────────────────────────────
-  const totalMembers = await prisma.member.count({ where: { gymId: gym.id } })
-  const activeMembers = await prisma.member.count({ where: { gymId: gym.id, enrollments: { some: { status: 'ACTIVE' } } } })
-  const expiredMembers = await prisma.member.count({ where: { gymId: gym.id, enrollments: { some: { status: 'EXPIRED' } } } })
-
-  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
-  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-
-  const revenueThisMonth = await prisma.payment.aggregate({
-    where: { gymId: gym.id, status: 'COMPLETED', paidAt: { gte: thisMonthStart } },
-    _sum: { amount: true },
-  })
-  const revenueLastMonth = await prisma.payment.aggregate({
-    where: { gymId: gym.id, status: 'COMPLETED', paidAt: { gte: lastMonthStart, lt: thisMonthStart } },
-    _sum: { amount: true },
-  })
-  const newThisMonth = await prisma.member.count({ where: { gymId: gym.id, createdAt: { gte: thisMonthStart } } })
-
-  const totalRevenue = await prisma.payment.aggregate({
-    where: { gymId: gym.id, status: 'COMPLETED' }, _sum: { amount: true },
-  })
-
-  // leads conversion
-  const totalLeads = await prisma.lead.count({ where: { gymId: gym.id } })
-  const convertedLeads = await prisma.lead.count({ where: { gymId: gym.id, status: 'CONVERTED' } })
-
-  // attendance rate: attended marks this month / active members
-  const checkInsThisMonth = await prisma.classAttendance.count({
-    where: { class: { gymId: gym.id }, date: { gte: thisMonthStart }, status: 'ATTENDED' },
-  })
 
   return NextResponse.json({
     kpi: {

@@ -52,8 +52,9 @@ export default function LeadsPage() {
     if (view === 'list') { p.set('page', String(page)); p.set('pageSize', String(pageSize)) }
     fetch(`/api/leads?${p}`).then(r=>r.json()).then(d=>{ setData(d); setLoading(false) }).catch(()=>setLoading(false))
   }
-  useEffect(()=>{ load() },[search, filterStatus, view, page, pageSize]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(()=>{ load() },[filterStatus, view, page, pageSize]) // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(()=>{ setPage(1) },[search, filterStatus, view]) // filters/search/view switch always jump back to page 1
+  useEffect(()=>{ const t = setTimeout(load, 300); return () => clearTimeout(t) },[search]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function addLead(e:React.FormEvent) {
     e.preventDefault()

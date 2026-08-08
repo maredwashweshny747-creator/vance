@@ -128,6 +128,8 @@ model Member {
   @@unique([gymId, email])
   @@unique([gymId, fighterId])
   @@index([gymId])
+  @@index([fighterId])
+  @@index([parentPhone])
 }
 
 // ─── Coaches (logged-in users, paid per session) ──────────────────────────
@@ -181,6 +183,9 @@ model CoachAttendance {
   class GymClass @relation(fields: [classId], references: [id], onDelete: Cascade)
 
   @@unique([coachId, classId, date])
+  @@index([classId, date])
+  @@index([assignedCoachId])
+  @@index([coachId, status, date])
 }
 
 // A class IS the subscribable plan: "Kickboxing Adults" meets Mon/Wed/Sat,

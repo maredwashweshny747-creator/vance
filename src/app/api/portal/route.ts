@@ -3,13 +3,24 @@ import { prisma } from '@/lib/prisma'
 import { checkAndExpireEnrollmentsBatch } from '@/lib/enrollment'
 import { getEnrollmentSessions } from '@/lib/enrollmentSessions'
 
-// Public portal - fighter accesses via their fighter ID (no auth needed, just fighterId+gymSlug)
+// Public portal - fighter accesses via their Fighter ID alone. Fighter IDs are only
+// guaranteed unique *within* a gym (each gym can have its own prefix, but two gyms on
+// the same default prefix could coincidentally produce the same ID) — so gym is still
+// resolved on the backend, just never typed by the fighter. In the rare case of a real
+// collision across gyms we can't safely guess which one they meant, so we ask them to
+// use the direct portal link their gym gave them instead of guessing wrong.
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const fighterId = searchParams.get('fighterId')
-  const gymSlug = searchParams.get('gym')
-  if (!fighterId || !gymSlug) return NextResponse.json({ error: 'fighterId and gym required' }, { status: 400 })
-  const gym = await prisma.gym.findUnique({ where: { slug: gymSlug } })
+  const gymSlug = searchParams.get('gym') // optional — a direct gym-scoped portal link can still pass this
+  if (!fighterId) return NextResponse.json({ error: 'fighterId required' }, { status: 400 })
+
+  const where = gymSlug ? { fighterId, gym: { slug: gymSlug } } : { fighterId }
+  const matches = await prisma.member.findMany({ where, select: { id: true, gymId: true }, take: 2 })
+  if (matches.length === 0) return NextResponse.json({ error: 'Fighter ID not found' }, { status: 404 })
+  if (matches.length > 1) return NextResponse.json({ error: 'This Fighter ID exists at more than one gym — use the portal link your gym gave you.' }, { status: 409 })
+
+  const gym = await prisma.gym.findUnique({ where: { id: matches[0].gymId } })
   if (!gym) return NextResponse.json({ error: 'Gym not found' }, { status: 404 })
   const member = await prisma.member.findFirst({
     where: { gymId: gym.id, fighterId },

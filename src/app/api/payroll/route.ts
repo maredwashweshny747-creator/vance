@@ -18,39 +18,23 @@ async function getCoveredAwayMap(gymId: string, dateFilter?: { gte: Date; lt: Da
   return coveredAway
 }
 
-// Counts sessions a coach has actually delivered (attended marks logged against their
-// approved classes) in a given month/year — one ATTENDED mark = one session taught.
-// Split by class type since group and private (1:1) sessions are paid at different rates.
-// Cover-aware: a session a cover coach taught pays the cover coach, not the absent
-// assigned coach — same logic as countPlayersAttended below, just month/type-scoped.
+// Counts sessions a coach has actually conducted — one CoachAttendance ATTENDED row =
+// one payroll credit, regardless of how many fighters showed up to that class. This is
+// deliberately NOT based on fighter ClassAttendance: a class of 5 fighters attending is
+// still just ONE session taught, not five. Split by class type since group and private
+// (1:1) sessions are paid at different rates.
+// Cover-aware for free: CoachAttendance.coachId is always "whoever gets credit" by
+// construction (the POST handler stores the cover coach's id there, not the absent
+// assigned coach's), so a plain count already attributes correctly — no override map needed.
 async function countSessions(gymId: string, coachId: string, month: number, year: number, classType: 'GROUP' | 'PRIVATE') {
   const start = new Date(year, month - 1, 1)
   const end   = new Date(year, month, 1)
-  const dateFilter = { gte: start, lt: end }
-  const coveredAway = await getCoveredAwayMap(gymId, dateFilter)
-  const typeFilter = classType === 'PRIVATE' ? 'PRIVATE' : { not: 'PRIVATE' }
-
-  // This coach's own classes this month, minus any sessions someone else covered for them.
-  const ownAttendance = await prisma.classAttendance.findMany({
-    where: { status: 'ATTENDED', date: dateFilter, class: { gymId, coachId, status: 'APPROVED', type: typeFilter as any } },
-    select: { classId: true, date: true },
+  return prisma.coachAttendance.count({
+    where: {
+      coachId, status: 'ATTENDED', date: { gte: start, lt: end },
+      class: { gymId, status: 'APPROVED', type: classType === 'PRIVATE' ? 'PRIVATE' : { not: 'PRIVATE' } },
+    },
   })
-  let count = ownAttendance.filter(a => {
-    const coveringCoach = coveredAway.get(`${a.classId}|${a.date.toISOString()}`)
-    return !coveringCoach || coveringCoach === coachId
-  }).length
-
-  // Sessions on other coaches' classes (of the right type) that this coach covered this month.
-  const coveredKeys = Array.from(coveredAway.entries()).filter(([, cId]) => cId === coachId).map(([k]) => k)
-  for (const key of coveredKeys) {
-    const [classId, dateIso] = key.split('|')
-    const cls = await prisma.gymClass.findUnique({ where: { id: classId }, select: { coachId: true, type: true, gymId: true, status: true } })
-    if (!cls || cls.gymId !== gymId || cls.status !== 'APPROVED') continue
-    if (cls.coachId === coachId) continue // already counted above
-    if ((classType === 'PRIVATE') !== (cls.type === 'PRIVATE')) continue
-    count += await prisma.classAttendance.count({ where: { classId, date: new Date(dateIso), status: 'ATTENDED' } })
-  }
-  return count
 }
 
 // Total fighter attendance records ever logged against classes this coach teaches —

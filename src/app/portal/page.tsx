@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Swords, Hash, Building2, ArrowRight, UserCheck, Calendar, TrendingUp, Dumbbell, QrCode, CheckCircle2, Clock, Target, Plus, Weight, X, MessageSquare, Send } from 'lucide-react'
+import { Swords, Hash, ArrowRight, UserCheck, Calendar, TrendingUp, Dumbbell, QrCode, CheckCircle2, Clock, Target, Plus, Weight, X, MessageSquare, Send } from 'lucide-react'
 import { cn, formatDate, getInitials } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
@@ -12,7 +12,6 @@ interface PortalData {
 export default function MemberPortal() {
   const [step, setStep] = useState<'login'|'portal'>('login')
   const [fighterId, setFighterId] = useState('')
-  const [gymSlug, setGymSlug] = useState('')
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<PortalData | null>(null)
   const [tab, setTab] = useState<'home'|'classes'|'workout'|'progress'|'qr'>('home')
@@ -26,7 +25,7 @@ export default function MemberPortal() {
     e.preventDefault()
     setLoading(true)
     try {
-      const res = await fetch(`/api/portal?fighterId=${encodeURIComponent(fighterId)}&gym=${gymSlug}`)
+      const res = await fetch(`/api/portal?fighterId=${encodeURIComponent(fighterId)}`)
       if(!res.ok){ const d=await res.json(); toast.error(d.error||'Not found'); setLoading(false); return }
       const d = await res.json()
       setData(d); setStep('portal')
@@ -69,11 +68,7 @@ export default function MemberPortal() {
         <form onSubmit={login} className="card space-y-4">
           <div>
             <label className="label">Fighter ID</label>
-            <div className="relative"><Hash size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400"/><input value={fighterId} onChange={e=>setFighterId(e.target.value)} required className="input pl-9 font-mono tracking-widest" placeholder="200060001" maxLength={20}/></div>
-          </div>
-          <div>
-            <label className="label">Gym ID</label>
-            <div className="relative"><Building2 size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400"/><input value={gymSlug} onChange={e=>setGymSlug(e.target.value)} required className="input pl-9" placeholder="your-gym-name"/></div>
+            <div className="relative"><Hash size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-400"/><input value={fighterId} onChange={e=>setFighterId(e.target.value)} required autoFocus className="input pl-9 font-mono tracking-widest" placeholder="200060001" maxLength={20}/></div>
           </div>
           <button type="submit" disabled={loading} className="btn-primary w-full justify-center">
             {loading ? 'Finding your account...' : <><span>Access Portal</span><ArrowRight size={16}/></>}
