@@ -229,7 +229,6 @@ export default function ClassAttendancePage() {
               <div className="flex-1 min-w-0">
                 <div className="text-white text-sm font-medium truncate">{entry.member.firstName} {entry.member.lastName}</div>
                 {entry.mark?.reason && <div className="text-dark-400 text-xs truncate">{entry.mark.reason}</div>}
-                {entry.status === 'FROZEN' && <div className="text-blue-400 text-xs">Frozen</div>}
               </div>
               <div className="flex gap-1.5 flex-shrink-0">
                 <button onClick={() => mark(entry, 'ATTENDED')} title="Attended"

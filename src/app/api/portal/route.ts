@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { checkAndExpireEnrollment } from '@/lib/enrollment'
+import { checkAndExpireEnrollmentsBatch } from '@/lib/enrollment'
+import { getEnrollmentSessions } from '@/lib/enrollmentSessions'
 
 // Public portal - fighter accesses via their fighter ID (no auth needed, just fighterId+gymSlug)
 export async function GET(req: NextRequest) {
@@ -20,7 +21,15 @@ export async function GET(req: NextRequest) {
   })
   if (!member) return NextResponse.json({ error: 'Fighter ID not found' }, { status: 404 })
 
-  for (const e of member.enrollments) await checkAndExpireEnrollment(e, e.class)
+  const statusMap = await checkAndExpireEnrollmentsBatch(member.enrollments)
+  for (const e of member.enrollments) (e as any).status = statusMap.get(e.id) || e.status
+
+  // Sessions calendar per class — real dates, not just a remaining count.
+  const enrollmentsWithSessions = await Promise.all(member.enrollments.map(async (e: any) => {
+    const sessions = await getEnrollmentSessions(e)
+    return { ...e, sessions }
+  }))
+  ;(member as any).enrollments = enrollmentsWithSessions
 
   const recentAttendance = await prisma.classAttendance.findMany({
     where: { memberId: member.id }, include: { class: true }, orderBy: { date: 'desc' }, take: 10,

@@ -3,7 +3,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  Search, Plus, X, Trash2, Snowflake, RefreshCw, Ban, Camera,
+  Search, Plus, X, Trash2, RefreshCw, Ban, Camera,
   MessageCircle, QrCode, ChevronRight, ArrowLeftRight, Pencil, Hourglass,
   CheckCircle2, XCircle, MinusCircle, User as UserIcon,
 } from 'lucide-react'
@@ -17,7 +17,6 @@ interface MonthSummary { attended: number; excused: number; absent: number; rema
 interface Enrollment {
   id: string; classId: string; class: ClassInfo; status: string
   startDate: string; endDate?: string
-  totalFreezeDaysLeft?: number
   addedByIdName?: string | null
   lastAction?: string; lastActionByIdName?: string | null; lastActionAt?: string
   monthSummary?: MonthSummary
@@ -34,7 +33,7 @@ interface Member {
   payments?: { id: string; amount: number; type: string; status: string; createdAt: string; method?: string | null; proofPhoto?: string | null }[]
 }
 
-const STATUS_OPTS = ['ALL', 'ACTIVE', 'FROZEN', 'EXPIRED', 'CANCELED', 'NO_PLAN']
+const STATUS_OPTS = ['ALL', 'ACTIVE', 'EXPIRED', 'CANCELED', 'NO_PLAN']
 const PAYMENT_METHODS = ['CASH', 'CARD', 'BANK_TRANSFER', 'INSTAPAY', 'VODAFONE_CASH']
 const PROOF_REQUIRED_METHODS = ['INSTAPAY', 'VODAFONE_CASH']
 
@@ -717,17 +716,11 @@ export default function FightersPage() {
                         </div>
 
                         <div className="flex flex-wrap gap-1.5">
-                          {e.status === 'ACTIVE' && (
-                            <button onClick={() => enrollmentAction(e.id, 'freeze', 'Frozen')} className="flex items-center gap-1 px-2 py-1 rounded-md bg-blue-400/10 border border-blue-400/20 text-blue-400 text-xs hover:bg-blue-400/20"><Snowflake size={11}/> Freeze</button>
-                          )}
-                          {e.status === 'FROZEN' && (
-                            <button onClick={() => enrollmentAction(e.id, 'unfreeze', 'Unfrozen')} className="flex items-center gap-1 px-2 py-1 rounded-md bg-primary-400/10 border border-primary-400/20 text-primary-400 text-xs hover:bg-primary-400/20"><Snowflake size={11}/> Unfreeze</button>
-                          )}
                           <button onClick={() => setRenewTarget(e)} className="flex items-center gap-1 px-2 py-1 rounded-md bg-primary-400/10 border border-primary-400/20 text-primary-400 text-xs hover:bg-primary-400/20"><RefreshCw size={11}/> Renew</button>
-                          {(e.status === 'ACTIVE' || e.status === 'FROZEN') && (
+                          {e.status === 'ACTIVE' && (
                             <button onClick={() => { setSwitchTarget(e); setSwitchToClassId('') }} className="flex items-center gap-1 px-2 py-1 rounded-md bg-blue-400/10 border border-blue-400/20 text-blue-400 text-xs hover:bg-blue-400/20"><ArrowLeftRight size={11}/> Switch</button>
                           )}
-                          {(e.status === 'ACTIVE' || e.status === 'FROZEN') && (
+                          {e.status === 'ACTIVE' && (
                             <button onClick={() => enrollmentAction(e.id, 'cancel', 'Canceled')} className="flex items-center gap-1 px-2 py-1 rounded-md bg-crimson-500/10 border border-crimson-500/20 text-crimson-400 text-xs hover:bg-crimson-500/20"><Ban size={11}/> Cancel</button>
                           )}
                           <button onClick={() => removeEnrollment(e.id)} className="flex items-center gap-1 px-2 py-1 rounded-md bg-dark-700 border border-dark-600 text-dark-400 text-xs hover:bg-crimson-500/10 hover:text-crimson-400 ml-auto"><Trash2 size={11}/></button>

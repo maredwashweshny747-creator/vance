@@ -177,7 +177,6 @@ async function main() {
         const now = new Date()
         let status = 'ACTIVE'
         if (end < now) status = pick(['EXPIRED','EXPIRED','ACTIVE'])
-        if (Math.random() < 0.06) status = 'FROZEN'
         if (Math.random() < 0.04) status = 'CANCELED'
         const wasRenewed = status === 'ACTIVE' && Math.random() < 0.15 // demonstrates a renewed subscription
 
@@ -185,8 +184,6 @@ async function main() {
           data: {
             memberId: member.id, classId: cls.id, status,
             startDate: start, endDate: end,
-            freezeStartedAt: status === 'FROZEN' ? daysAgo(rand(1,10)) : null,
-            totalFreezeDaysLeft: status === 'FROZEN' ? rand(5, 20) : 0,
             addedById: addedBy, lastAction: wasRenewed ? 'RENEWED' : 'CREATED',
             lastActionById: wasRenewed ? pick(addedByPool) : addedBy,
             lastActionAt: wasRenewed ? daysAgo(rand(0, 10)) : start,

@@ -16,7 +16,7 @@ export async function GET() {
 
   const classes = await prisma.gymClass.findMany({
     where: { gymId: gym.id, ...coachFilter },
-    include: { coach: true, offers: { where: { isActive: true }, orderBy: { createdAt: 'asc' } }, _count: { select: { enrollments: { where: { status: { in: ['ACTIVE', 'FROZEN'] } } } } } },
+    include: { coach: true, offers: { where: { isActive: true }, orderBy: { createdAt: 'asc' } }, _count: { select: { enrollments: { where: { status: 'ACTIVE' } } } } },
     orderBy: { createdAt: 'desc' },
   })
 

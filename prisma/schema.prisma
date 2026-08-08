@@ -240,16 +240,17 @@ model ClassEnrollment {
   id          String   @id @default(cuid())
   memberId    String
   classId     String
-  status      String   @default("ACTIVE") // ACTIVE, EXPIRED, FROZEN, CANCELED
+  status      String   @default("ACTIVE") // ACTIVE, EXPIRED, CANCELED
   startDate   DateTime @default(now())
   endDate     DateTime?
-  freezeStartedAt     DateTime?
-  totalFreezeDaysLeft Int?      @default(0)
   addedById       String?   // who first enrolled the fighter
-  lastAction      String?   // CREATED, RENEWED, FROZEN, UNFROZEN, CANCELED, EXPIRED
+  lastAction      String?   // CREATED, RENEWED, SWITCHED, CANCELED, EXPIRED
   lastActionById  String?   // who performed the most recent action
   lastActionAt    DateTime?
   sessionCount    Int?      // for PRIVATE (session-based) classes: total sessions purchased this cycle
+  totalSessions   Int?      // for GROUP classes: total sessions committed at enroll/renew time —
+                             // fixed and independent of endDate, which can extend when a session
+                             // is excused (the fighter keeps all their sessions, just later)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

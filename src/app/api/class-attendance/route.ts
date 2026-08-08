@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getSessionAndGym } from '@/lib/getGym'
 import { checkAndExpireEnrollment, checkAndExpireEnrollmentsBatch } from '@/lib/enrollment'
 
-import { generateSessionDates } from '@/lib/sessions'
+import { generateSessionDates, nextScheduledDate } from '@/lib/sessions'
 
 function startOfDay(d: Date) { const x = new Date(d); x.setHours(0,0,0,0); return x }
 
@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
   const nextDay = new Date(date); nextDay.setDate(nextDay.getDate() + 1)
 
   const enrollments = await prisma.classEnrollment.findMany({
-    where: { classId, status: { in: ['ACTIVE', 'FROZEN'] } },
+    where: { classId, status: 'ACTIVE' },
     include: { member: true },
     orderBy: { member: { firstName: 'asc' } },
   })
@@ -87,7 +87,7 @@ export async function GET(req: NextRequest) {
   const markByEnrollment = new Map(marks.map(m => [m.enrollmentId, m]))
 
   const roster = enrollments
-    .filter(e => e.status === 'ACTIVE' || e.status === 'FROZEN')
+    .filter(e => e.status === 'ACTIVE')
     .map(e => ({
       enrollmentId: e.id,
       member: { id: e.member.id, firstName: e.member.firstName, lastName: e.member.lastName, photo: e.member.photo },
@@ -119,7 +119,16 @@ export async function POST(req: NextRequest) {
     create: { classId: enr.classId, enrollmentId, memberId: enr.memberId, date: day, status, reason: reason || null, method: method || 'ROSTER', markedById: user.id },
   })
 
-  // an ATTENDED mark can push the fighter over their session cap — check right away
+  // Excused sessions don't cost the fighter a session — push their cycle out by exactly
+  // one scheduled occurrence so they still get their full session count, just later.
+  // (Re-excusing the same date twice is a no-op: nextScheduledDate always extends from
+  // the *current* endDate, not from the excused date itself.)
+  if (status === 'EXCUSED') {
+    const next = nextScheduledDate(enr.class, enr.endDate ? new Date(enr.endDate) : day)
+    if (next) await prisma.classEnrollment.update({ where: { id: enr.id }, data: { endDate: next } })
+  }
+
+  // an ATTENDED/ABSENT mark can push the fighter over their session cap — check right away
   await checkAndExpireEnrollment(enr, enr.class)
 
   return NextResponse.json(mark)

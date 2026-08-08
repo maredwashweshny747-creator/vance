@@ -2,19 +2,55 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionAndGym, isAdmin } from '@/lib/getGym'
 
+// key "classId|dateISO" -> the coach who actually gets credit for that session, only
+// recorded when it differs from the class's normally-assigned coach (i.e. a real cover).
+async function getCoveredAwayMap(gymId: string, dateFilter?: { gte: Date; lt: Date }) {
+  const overrides = await prisma.coachAttendance.findMany({
+    where: { class: { gymId }, assignedCoachId: { not: null }, ...(dateFilter ? { date: dateFilter } : {}) },
+    select: { coachId: true, classId: true, date: true, assignedCoachId: true },
+  })
+  const coveredAway = new Map<string, string>()
+  for (const o of overrides) {
+    if (o.assignedCoachId && o.assignedCoachId !== o.coachId) {
+      coveredAway.set(`${o.classId}|${o.date.toISOString()}`, o.coachId)
+    }
+  }
+  return coveredAway
+}
+
 // Counts sessions a coach has actually delivered (attended marks logged against their
 // approved classes) in a given month/year — one ATTENDED mark = one session taught.
 // Split by class type since group and private (1:1) sessions are paid at different rates.
+// Cover-aware: a session a cover coach taught pays the cover coach, not the absent
+// assigned coach — same logic as countPlayersAttended below, just month/type-scoped.
 async function countSessions(gymId: string, coachId: string, month: number, year: number, classType: 'GROUP' | 'PRIVATE') {
   const start = new Date(year, month - 1, 1)
   const end   = new Date(year, month, 1)
-  return prisma.classAttendance.count({
-    where: {
-      status: 'ATTENDED',
-      date: { gte: start, lt: end },
-      class: { gymId, coachId, status: 'APPROVED', type: classType === 'PRIVATE' ? 'PRIVATE' : { not: 'PRIVATE' } },
-    },
+  const dateFilter = { gte: start, lt: end }
+  const coveredAway = await getCoveredAwayMap(gymId, dateFilter)
+  const typeFilter = classType === 'PRIVATE' ? 'PRIVATE' : { not: 'PRIVATE' }
+
+  // This coach's own classes this month, minus any sessions someone else covered for them.
+  const ownAttendance = await prisma.classAttendance.findMany({
+    where: { status: 'ATTENDED', date: dateFilter, class: { gymId, coachId, status: 'APPROVED', type: typeFilter as any } },
+    select: { classId: true, date: true },
   })
+  let count = ownAttendance.filter(a => {
+    const coveringCoach = coveredAway.get(`${a.classId}|${a.date.toISOString()}`)
+    return !coveringCoach || coveringCoach === coachId
+  }).length
+
+  // Sessions on other coaches' classes (of the right type) that this coach covered this month.
+  const coveredKeys = Array.from(coveredAway.entries()).filter(([, cId]) => cId === coachId).map(([k]) => k)
+  for (const key of coveredKeys) {
+    const [classId, dateIso] = key.split('|')
+    const cls = await prisma.gymClass.findUnique({ where: { id: classId }, select: { coachId: true, type: true, gymId: true, status: true } })
+    if (!cls || cls.gymId !== gymId || cls.status !== 'APPROVED') continue
+    if (cls.coachId === coachId) continue // already counted above
+    if ((classType === 'PRIVATE') !== (cls.type === 'PRIVATE')) continue
+    count += await prisma.classAttendance.count({ where: { classId, date: new Date(dateIso), status: 'ATTENDED' } })
+  }
+  return count
 }
 
 // Total fighter attendance records ever logged against classes this coach teaches —
@@ -22,17 +58,7 @@ async function countSessions(gymId: string, coachId: string, month: number, year
 // normally-assigned coach (a cover coach's sessions count for them, not the absent
 // assigned coach).
 async function countPlayersAttended(gymId: string, coachId: string) {
-  const overrides = await prisma.coachAttendance.findMany({
-    where: { class: { gymId }, assignedCoachId: { not: null } },
-    select: { coachId: true, classId: true, date: true, assignedCoachId: true },
-  })
-  // key -> the coach who actually gets credit, only recorded when it differs from the assigned coach
-  const coveredAway = new Map<string, string>()
-  for (const o of overrides) {
-    if (o.assignedCoachId && o.assignedCoachId !== o.coachId) {
-      coveredAway.set(`${o.classId}|${o.date.toISOString()}`, o.coachId)
-    }
-  }
+  const coveredAway = await getCoveredAwayMap(gymId)
 
   // This coach's own classes, minus any sessions someone else covered for them.
   const ownAttendance = await prisma.classAttendance.findMany({

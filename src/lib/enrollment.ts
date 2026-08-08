@@ -11,11 +11,14 @@ import { sessionsAllowedForCycle } from '@/lib/utils'
  * so they can never drift out of sync with each other again.
  */
 export function sessionsAllowedForEnrollment(
-  enrollment: { startDate: Date | string; endDate: Date | string | null; sessionCount?: number | null },
+  enrollment: { startDate: Date | string; endDate: Date | string | null; sessionCount?: number | null; totalSessions?: number | null },
   cls: { daysOfWeek: string[]; durationDays: number; isOneTime?: boolean; type?: string }
 ): number {
   if (cls.type === 'PRIVATE') return enrollment.sessionCount || 0
   if (cls.isOneTime) return 1
+  if (enrollment.totalSessions != null) return enrollment.totalSessions
+  // Fallback for enrollments created before totalSessions existed — derive from the
+  // span. Not excuse-safe, but only hit for legacy rows.
   const spanDays = enrollment.endDate
     ? Math.round((new Date(enrollment.endDate).getTime() - new Date(enrollment.startDate).getTime()) / 86400000)
     : cls.durationDays
@@ -79,7 +82,7 @@ export async function generateFighterId(gymId: string): Promise<string> {
  * count, one updateMany for whichever ones need to flip to EXPIRED.
  */
 export async function checkAndExpireEnrollmentsBatch(
-  enrollments: { id: string; status: string; startDate: Date; endDate: Date | null; sessionCount?: number | null; class: { daysOfWeek: string[]; durationDays: number; isOneTime?: boolean; type?: string } }[]
+  enrollments: { id: string; status: string; startDate: Date; endDate: Date | null; sessionCount?: number | null; totalSessions?: number | null; class: { daysOfWeek: string[]; durationDays: number; isOneTime?: boolean; type?: string } }[]
 ): Promise<Map<string, string>> {
   const statusMap = new Map<string, string>()
   const activeOnes = enrollments.filter(e => e.status === 'ACTIVE')
@@ -88,9 +91,12 @@ export async function checkAndExpireEnrollmentsBatch(
     return statusMap
   }
 
+  // A session only "uses up" one of the fighter's allotted sessions if they attended it
+  // or were absent WITHOUT an excuse — an excused session doesn't count against them
+  // (their cycle's endDate gets pushed out by one occurrence separately, see class-attendance POST).
   const counts = await prisma.classAttendance.groupBy({
     by: ['enrollmentId'],
-    where: { enrollmentId: { in: activeOnes.map(e => e.id) }, status: 'ATTENDED' },
+    where: { enrollmentId: { in: activeOnes.map(e => e.id) }, status: { in: ['ATTENDED', 'ABSENT'] } },
     _count: { _all: true },
   })
   const countMap = new Map<string, number>(counts.map((c: any) => [c.enrollmentId, c._count._all as number]))
@@ -100,9 +106,9 @@ export async function checkAndExpireEnrollmentsBatch(
   for (const e of enrollments) {
     if (e.status !== 'ACTIVE') { statusMap.set(e.id, e.status); continue }
     const daysPassed = e.endDate ? now > new Date(e.endDate) : false
-    const attended = countMap.get(e.id) || 0
+    const usedSlots = countMap.get(e.id) || 0
     const sessionsAllowed = sessionsAllowedForEnrollment(e, e.class)
-    const sessionsUsedUp = sessionsAllowed > 0 && attended >= sessionsAllowed
+    const sessionsUsedUp = sessionsAllowed > 0 && usedSlots >= sessionsAllowed
     if (daysPassed || sessionsUsedUp) { toExpire.push(e.id); statusMap.set(e.id, 'EXPIRED') }
     else statusMap.set(e.id, 'ACTIVE')
   }
@@ -113,16 +119,16 @@ export async function checkAndExpireEnrollmentsBatch(
   return statusMap
 }
 
-export async function checkAndExpireEnrollment(enrollment: { id: string; status: string; startDate: Date; endDate: Date | null; sessionCount?: number | null }, cls: { daysOfWeek: string[]; durationDays: number; isOneTime?: boolean; type?: string }) {
+export async function checkAndExpireEnrollment(enrollment: { id: string; status: string; startDate: Date; endDate: Date | null; sessionCount?: number | null; totalSessions?: number | null }, cls: { daysOfWeek: string[]; durationDays: number; isOneTime?: boolean; type?: string }) {
   if (enrollment.status !== 'ACTIVE') return enrollment.status
 
   const daysPassed = enrollment.endDate ? new Date() > new Date(enrollment.endDate) : false
 
-  const attended = await prisma.classAttendance.count({
-    where: { enrollmentId: enrollment.id, status: 'ATTENDED' },
+  const usedSlots = await prisma.classAttendance.count({
+    where: { enrollmentId: enrollment.id, status: { in: ['ATTENDED', 'ABSENT'] } },
   })
   const sessionsAllowed = sessionsAllowedForEnrollment(enrollment, cls)
-  const sessionsUsedUp = sessionsAllowed > 0 && attended >= sessionsAllowed
+  const sessionsUsedUp = sessionsAllowed > 0 && usedSlots >= sessionsAllowed
 
   if (daysPassed || sessionsUsedUp) {
     await prisma.classEnrollment.update({ where: { id: enrollment.id }, data: { status: 'EXPIRED' } })

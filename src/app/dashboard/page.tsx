@@ -256,7 +256,7 @@ export default function DashboardPage() {
             ) : statusBreakdown.map((s: any) => {
               const colorMap: Record<string, string> = {
                 ACTIVE: 'bg-primary-400', EXPIRED: 'bg-red-400',
-                FROZEN: 'bg-blue-400', CANCELED: 'bg-gray-500',
+                CANCELED: 'bg-gray-500',
               }
               const count = s._count?.membershipStatus ?? s.count ?? 0
               const status = s.membershipStatus ?? s.status ?? ''

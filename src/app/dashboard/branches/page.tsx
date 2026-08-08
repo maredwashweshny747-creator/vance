@@ -261,7 +261,7 @@ export default function BranchesPage() {
                         <p className="text-dark-400 text-xs mb-2 uppercase tracking-widest font-mono">Recent Fighters</p>
                         <div className="space-y-2">
                           {detail.recentMembers.map((m:any)=>{
-                            const st = m.enrollments?.some((e:any)=>e.status==='ACTIVE') ? 'ACTIVE' : m.enrollments?.some((e:any)=>e.status==='FROZEN') ? 'FROZEN' : m.enrollments?.some((e:any)=>e.status==='EXPIRED') ? 'EXPIRED' : 'NO_PLAN'
+                            const st = m.enrollments?.some((e:any)=>e.status==='ACTIVE') ? 'ACTIVE' : m.enrollments?.some((e:any)=>e.status==='EXPIRED') ? 'EXPIRED' : 'NO_PLAN'
                             return (
                             <div key={m.id} className="flex items-center gap-3 bg-dark-800 rounded-xl p-3">
                               <div className="w-8 h-8 rounded-full bg-dark-700 flex items-center justify-center text-xs font-bold text-primary-400 flex-shrink-0">

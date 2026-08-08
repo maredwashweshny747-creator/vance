@@ -4,7 +4,7 @@ import { getSessionAndGym } from '@/lib/getGym'
 import { sessionsAllowedForCycle } from '@/lib/utils'
 import { baseAmountForClass, applyDiscount } from '@/lib/payment'
 
-import { generateSessionDates } from '@/lib/sessions'
+import { getEnrollmentSessions } from '@/lib/enrollmentSessions'
 
 function calcEndDate(start: Date, durationDays: number): Date {
   const d = new Date(start)
@@ -24,41 +24,10 @@ export async function GET(req: NextRequest) {
   const enr = await prisma.classEnrollment.findFirst({ where: { id, member: { gymId: gym.id } }, include: { class: true } })
   if (!enr) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const marks = await prisma.classAttendance.findMany({ where: { enrollmentId: id }, orderBy: { date: 'asc' } })
-  const markByDate = new Map<string, any>(marks.map((m: any) => [startOfDayISO(m.date), m]))
-
-  if (enr.class.type === 'PRIVATE') {
-    // Private sessions are booked ad-hoc, not on a fixed weekly calendar — list what's
-    // actually happened, plus how many unscheduled sessions are left in the package.
-    const total = enr.sessionCount || 0
-    const attendedCount = marks.filter((m: any) => m.status === 'ATTENDED').length
-    const sessions = marks.map((m: any) => ({ date: m.date, status: m.status, reason: m.reason || null }))
-    return NextResponse.json({ class: { id: enr.class.id, name: enr.class.name, type: 'PRIVATE' }, isPrivate: true, sessionCount: total, attended: attendedCount, remaining: Math.max(0, total - attendedCount), sessions })
-  }
-
-  const today = startOfDay(new Date())
-  const rangeEnd = enr.endDate ? new Date(enr.endDate) : today
-  const dates = generateSessionDates(enr.class, enr.startDate, rangeEnd)
-
-  const sessions = dates.map(d => {
-    const mark = markByDate.get(startOfDayISO(d))
-    let status: string
-    if (mark) status = mark.status
-    else status = d > today ? 'UPCOMING' : 'MISSED' // past + unmarked reads as a missed session
-    return { date: d, status, reason: mark?.reason || null }
-  })
-
-  const attended = sessions.filter(s => s.status === 'ATTENDED').length
-  return NextResponse.json({
-    class: { id: enr.class.id, name: enr.class.name, type: enr.class.type },
-    isPrivate: false,
-    sessionsAllowed: sessions.length, attended, remaining: sessions.filter(s => s.status === 'UPCOMING').length,
-    sessions,
-  })
+  const data = await getEnrollmentSessions(enr)
+  return NextResponse.json({ class: { id: enr.class.id, name: enr.class.name, type: enr.class.type }, ...data })
 }
 
-function startOfDay(d: Date) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
-function startOfDayISO(d: Date | string) { return startOfDay(new Date(d)).toISOString() }
 
 // POST: sign a fighter into a class (their initial enrollment, or an additional discipline).
 // For PRIVATE (session-based) classes, body.sessionCount is the number of sessions purchased
@@ -75,7 +44,7 @@ export async function POST(req: NextRequest) {
     const cls = await prisma.gymClass.findFirst({ where: { id: body.classId, gymId: gym.id } })
     if (!cls) return NextResponse.json({ error: 'Class not found' }, { status: 404 })
 
-    const existingActive = await prisma.classEnrollment.findFirst({ where: { memberId: member.id, classId: cls.id, status: { in: ['ACTIVE', 'FROZEN'] } } })
+    const existingActive = await prisma.classEnrollment.findFirst({ where: { memberId: member.id, classId: cls.id, status: 'ACTIVE' } })
     if (existingActive) return NextResponse.json({ error: `${member.firstName} is already signed into ${cls.name}` }, { status: 409 })
 
     const startDate = body.startDate ? new Date(body.startDate) : new Date()
@@ -99,10 +68,11 @@ export async function POST(req: NextRequest) {
       base = offer.price
     }
     const endDate = calcEndDate(startDate, durationDays)
+    const totalSessions = cls.type === 'PRIVATE' ? null : sessionsAllowedForCycle(cls.daysOfWeek.length, durationDays)
 
     const enrollment = await prisma.classEnrollment.create({
       data: {
-        memberId: member.id, classId: cls.id, status: 'ACTIVE', startDate, endDate, sessionCount,
+        memberId: member.id, classId: cls.id, status: 'ACTIVE', startDate, endDate, sessionCount, totalSessions,
         addedById: user.id, lastAction: 'CREATED', lastActionById: user.id, lastActionAt: new Date(),
       },
       include: { class: true },
@@ -127,7 +97,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// PATCH ?id=<enrollmentId> — freeze / unfreeze / renew / cancel a single enrollment.
+// PATCH ?id=<enrollmentId> — renew / cancel / switch a single enrollment.
 // Renew always records who confirmed it (the logged-in user) — the frontend is expected
 // to show a confirm step before calling this, since renewing charges the fighter again.
 export async function PATCH(req: NextRequest) {
@@ -145,31 +115,6 @@ export async function PATCH(req: NextRequest) {
 
   const body = await req.json()
   const action = body._action
-
-  if (action === 'freeze') {
-    const now = new Date()
-    const currentEnd = enr.endDate ? new Date(enr.endDate) : now
-    const msLeft = Math.max(0, currentEnd.getTime() - now.getTime())
-    await prisma.classEnrollment.update({
-      where: { id }, data: {
-        status: 'FROZEN', freezeStartedAt: now, totalFreezeDaysLeft: Math.round(msLeft / 86400000),
-        lastAction: 'FROZEN', lastActionById: user.id, lastActionAt: now,
-      },
-    })
-    return NextResponse.json({ success: true, message: `Frozen. ${Math.ceil(msLeft / 86400000)} days paused.` })
-  }
-
-  if (action === 'unfreeze') {
-    const daysLeft = enr.totalFreezeDaysLeft || 0
-    const newEnd = new Date(); newEnd.setDate(newEnd.getDate() + daysLeft)
-    await prisma.classEnrollment.update({
-      where: { id }, data: {
-        status: 'ACTIVE', endDate: newEnd, freezeStartedAt: null, totalFreezeDaysLeft: 0,
-        lastAction: 'UNFROZEN', lastActionById: user.id, lastActionAt: new Date(),
-      },
-    })
-    return NextResponse.json({ success: true, message: `Unfrozen! ${daysLeft} days restored. Expires ${newEnd.toDateString()}` })
-  }
 
   if (action === 'renew') {
     // Explicit confirmation is expected client-side before this call; we still record
@@ -206,7 +151,8 @@ export async function PATCH(req: NextRequest) {
       const newEnrollment = await tx.classEnrollment.create({
         data: {
           memberId: enr.memberId, classId: enr.classId, status: 'ACTIVE', startDate: newStart, endDate: newEnd,
-          sessionCount, addedById: enr.addedById, lastAction: 'RENEWED', lastActionById: user.id, lastActionAt: new Date(),
+          sessionCount, totalSessions: enr.class.type === 'PRIVATE' ? null : sessionsAllowedForCycle(enr.class.daysOfWeek.length, durationDays),
+          addedById: enr.addedById, lastAction: 'RENEWED', lastActionById: user.id, lastActionAt: new Date(),
         },
       })
       const payment = await tx.payment.create({
@@ -226,7 +172,7 @@ export async function PATCH(req: NextRequest) {
 
   if (action === 'cancel') {
     await prisma.classEnrollment.update({
-      where: { id }, data: { status: 'CANCELED', freezeStartedAt: null, lastAction: 'CANCELED', lastActionById: user.id, lastActionAt: new Date() },
+      where: { id }, data: { status: 'CANCELED', lastAction: 'CANCELED', lastActionById: user.id, lastActionAt: new Date() },
     })
     return NextResponse.json({ success: true, message: 'Enrollment canceled.' })
   }
@@ -241,7 +187,7 @@ export async function PATCH(req: NextRequest) {
     if (!newClass) return NextResponse.json({ error: 'Class not found' }, { status: 404 })
     if (newClassId === enr.classId) return NextResponse.json({ error: 'Already signed into that class' }, { status: 400 })
 
-    const alreadyIn = await prisma.classEnrollment.findFirst({ where: { memberId: enr.memberId, classId: newClassId, status: { in: ['ACTIVE', 'FROZEN'] } } })
+    const alreadyIn = await prisma.classEnrollment.findFirst({ where: { memberId: enr.memberId, classId: newClassId, status: 'ACTIVE' } })
     if (alreadyIn) return NextResponse.json({ error: `${enr.member.firstName} is already signed into ${newClass.name}` }, { status: 409 })
 
     const now = new Date()
@@ -256,6 +202,7 @@ export async function PATCH(req: NextRequest) {
         where: { id: enr.id },
         data: {
           classId: newClassId, sessionCount,
+          totalSessions: newClass.type === 'PRIVATE' ? null : sessionsAllowedForCycle(newClass.daysOfWeek.length, newClass.durationDays),
           // startDate/endDate deliberately untouched — same subscription period, only the class changes.
           lastAction: 'SWITCHED', lastActionById: user.id, lastActionAt: now,
         },

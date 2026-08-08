@@ -9,6 +9,22 @@ function startOfDay(d: Date) { const x = new Date(d); x.setHours(0, 0, 0, 0); re
  * Tue 8/6 — used both for the fighter-facing "remaining sessions" breakdown and the
  * Classes -> Manage Attendance month view.
  */
+/**
+ * The next date, strictly after `afterDate`, that matches the class's weekly schedule.
+ * Used to push an enrollment's cycle out by exactly one session when a fighter is
+ * excused — they keep their full session count, they just get an extra date at the end.
+ */
+export function nextScheduledDate(cls: { daysOfWeek: string[]; isOneTime?: boolean; type?: string }, afterDate: Date): Date | null {
+  if (cls.isOneTime || cls.type === 'PRIVATE' || !cls.daysOfWeek || cls.daysOfWeek.length === 0) return null
+  const cursor = startOfDay(afterDate)
+  cursor.setDate(cursor.getDate() + 1)
+  for (let i = 0; i < 14; i++) { // a week+ is always enough to hit the next scheduled day
+    if (cls.daysOfWeek.includes(DOW[cursor.getDay()])) return new Date(cursor)
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return null
+}
+
 export function generateSessionDates(
   cls: { daysOfWeek: string[]; isOneTime?: boolean; sessionDate?: Date | string | null; type?: string },
   rangeStart: Date,

@@ -55,7 +55,6 @@ export async function GET(req: NextRequest) {
     const headers = ['id','firstName','lastName','email','phone','membershipPlans','membershipStatus','notes','branch','createdAt']
     const rows = members.map(m => {
       const overallStatus = m.enrollments.some(e => e.status === 'ACTIVE') ? 'ACTIVE'
-        : m.enrollments.some(e => e.status === 'FROZEN') ? 'FROZEN'
         : m.enrollments.some(e => e.status === 'EXPIRED') ? 'EXPIRED'
         : m.enrollments.length > 0 ? 'CANCELED' : 'NO_PLAN'
       return {

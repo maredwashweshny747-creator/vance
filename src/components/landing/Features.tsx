@@ -14,7 +14,7 @@ const features = [
   {
     icon: Users,
     title: 'Fighter Management',
-    desc: 'Full fighter profiles, session-based membership plans, renewal tracking, freeze/cancel controls, emergency contacts, health notes, and smart status alerts all in one place.',
+    desc: 'Full fighter profiles, session-based membership plans, renewal tracking, cancel controls, emergency contacts, health notes, and smart status alerts all in one place.',
     color: 'text-primary-400',
     bg: 'bg-primary-400/10 border-primary-400/20',
     tag: 'Core',

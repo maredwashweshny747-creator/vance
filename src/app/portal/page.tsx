@@ -18,6 +18,7 @@ export default function MemberPortal() {
   const [tab, setTab] = useState<'home'|'classes'|'workout'|'progress'|'qr'>('home')
   const [progressForm, setProgressForm] = useState({ weight:'', bodyFat:'', waist:'', notes:'' })
   const [photoZoom, setPhotoZoom] = useState(false)
+  const [openCalendarFor, setOpenCalendarFor] = useState<string | null>(null)
   const [feedbackMsg, setFeedbackMsg] = useState('')
   const [sendingFeedback, setSendingFeedback] = useState(false)
 
@@ -51,7 +52,6 @@ export default function MemberPortal() {
   const statusColors: Record<string,string> = {
     ACTIVE:'text-primary-400 bg-primary-400/10 border-primary-400/20',
     EXPIRED:'text-red-400 bg-red-400/10 border-red-400/20',
-    FROZEN:'text-blue-400 bg-blue-400/10 border-blue-400/20',
   }
 
   if(step === 'login') return (
@@ -89,7 +89,6 @@ export default function MemberPortal() {
 
   const activeEnrollments = member.enrollments?.filter((e: any) => e.status === 'ACTIVE') || []
   const overallStatus = activeEnrollments.length > 0 ? 'ACTIVE'
-    : member.enrollments?.some((e: any) => e.status === 'FROZEN') ? 'FROZEN'
     : member.enrollments?.some((e: any) => e.status === 'EXPIRED') ? 'EXPIRED'
     : member.enrollments?.length > 0 ? 'CANCELED' : 'NO_PLAN'
   const soonestExpiry = activeEnrollments
@@ -197,16 +196,40 @@ export default function MemberPortal() {
             <h3 className="text-white font-semibold">Your Class Schedule</h3>
             {(member.enrollments || []).length === 0 ? <div className="card text-center py-10 text-dark-400">Not signed into any classes yet</div>
             : member.enrollments.map((e:any)=>(
-              <div key={e.id} className="card-hover flex items-center gap-4" style={{borderLeftColor:e.class?.color||'#ffc700',borderLeftWidth:3}}>
-                <div className="flex-1">
-                  <div className="text-white font-semibold text-sm">{e.class?.name}</div>
-                  <div className="text-dark-400 text-xs mt-0.5 flex items-center gap-2 flex-wrap">
-                    <Clock size={10}/>{e.class?.startTimeOfDay} · {e.class?.duration}min
-                    <span>·</span><span>{(e.class?.daysOfWeek || []).join('/')}</span>
-                    {e.class?.coach && <><span>·</span><span>Coach {e.class.coach.firstName} {e.class.coach.lastName}</span></>}
+              <div key={e.id} className="card" style={{borderLeftColor:e.class?.color||'#ffc700',borderLeftWidth:3}}>
+                <button className="w-full flex items-center gap-4 text-left" onClick={() => setOpenCalendarFor(openCalendarFor === e.id ? null : e.id)}>
+                  <div className="flex-1">
+                    <div className="text-white font-semibold text-sm">{e.class?.name}</div>
+                    <div className="text-dark-400 text-xs mt-0.5 flex items-center gap-2 flex-wrap">
+                      <Clock size={10}/>{e.class?.startTimeOfDay} · {e.class?.duration}min
+                      <span>·</span><span>{(e.class?.daysOfWeek || []).join('/')}</span>
+                      {e.class?.coach && <><span>·</span><span>Coach {e.class.coach.firstName} {e.class.coach.lastName}</span></>}
+                    </div>
                   </div>
-                </div>
-                <span className={cn('badge text-xs flex-shrink-0', statusColors[e.status]||'')}>{e.status}</span>
+                  <span className={cn('badge text-xs flex-shrink-0', statusColors[e.status]||'')}>{e.status}</span>
+                </button>
+                {e.sessions && (
+                  <button onClick={() => setOpenCalendarFor(openCalendarFor === e.id ? null : e.id)} className="text-primary-400 text-xs mt-2 flex items-center gap-1">
+                    {e.sessions.attended} attended · {e.sessions.remaining} remaining — {openCalendarFor === e.id ? 'hide' : 'view'} sessions calendar
+                  </button>
+                )}
+                {openCalendarFor === e.id && e.sessions && (
+                  <div className="mt-3 pt-3 border-t border-dark-700 space-y-1.5 max-h-64 overflow-y-auto">
+                    {e.sessions.sessions.length === 0 ? <p className="text-dark-500 text-xs">No sessions scheduled yet.</p> :
+                      e.sessions.sessions.map((s: any, i: number) => {
+                        const badge = s.status === 'ATTENDED' ? 'text-primary-400 bg-primary-400/10 border-primary-400/20'
+                          : s.status === 'EXCUSED' ? 'text-blue-400 bg-blue-400/10 border-blue-400/20'
+                          : s.status === 'UPCOMING' ? 'text-dark-400 bg-dark-700 border-dark-600'
+                          : 'text-crimson-400 bg-crimson-400/10 border-crimson-400/20'
+                        return (
+                          <div key={i} className="flex items-center justify-between px-3 py-1.5 rounded-lg bg-dark-750 border border-dark-700">
+                            <span className="text-white text-xs">{new Date(s.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                            <span className={cn('badge text-xs', badge)}>{s.status === 'MISSED' ? 'Absent' : s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
+                          </div>
+                        )
+                      })}
+                  </div>
+                )}
               </div>
             ))}
           </div>

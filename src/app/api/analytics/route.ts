@@ -38,7 +38,7 @@ export async function GET() {
   // ── Class breakdown (counts active enrollments, not members — a fighter
   // training two disciplines counts once per class) ───────────────────────
   const activeEnrollments = await prisma.classEnrollment.findMany({
-    where: { class: { gymId: gym.id }, status: { in: ['ACTIVE', 'FROZEN'] } },
+    where: { class: { gymId: gym.id }, status: 'ACTIVE' },
     select: { class: { select: { name: true } } },
   })
   const planCounts: Record<string, number> = {}
@@ -72,7 +72,7 @@ export async function GET() {
   // ── Top classes by active enrollment ───────────────────────────────────
   const topClasses = await prisma.gymClass.findMany({
     where: { gymId: gym.id },
-    include: { _count: { select: { enrollments: { where: { status: { in: ['ACTIVE','FROZEN'] } } } } } },
+    include: { _count: { select: { enrollments: { where: { status: 'ACTIVE' } } } } },
     orderBy: { enrollments: { _count: 'desc' } },
     take: 5,
   })
@@ -81,7 +81,6 @@ export async function GET() {
   const totalMembers = await prisma.member.count({ where: { gymId: gym.id } })
   const activeMembers = await prisma.member.count({ where: { gymId: gym.id, enrollments: { some: { status: 'ACTIVE' } } } })
   const expiredMembers = await prisma.member.count({ where: { gymId: gym.id, enrollments: { some: { status: 'EXPIRED' } } } })
-  const frozenMembers = await prisma.member.count({ where: { gymId: gym.id, enrollments: { some: { status: 'FROZEN' } } } })
 
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1)
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
@@ -111,7 +110,7 @@ export async function GET() {
 
   return NextResponse.json({
     kpi: {
-      totalMembers, activeMembers, expiredMembers, frozenMembers,
+      totalMembers, activeMembers, expiredMembers,
       revenueThisMonth: revenueThisMonth._sum.amount || 0,
       revenueLastMonth: revenueLastMonth._sum.amount || 0,
       newThisMonth, totalRevenue: totalRevenue._sum.amount || 0,

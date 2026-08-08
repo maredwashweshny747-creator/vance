@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionAndGym } from '@/lib/getGym'
 import { checkAndExpireEnrollmentsBatch, sessionsAllowedForEnrollment } from '@/lib/enrollment'
-import { phoneValidationError } from '@/lib/utils'
+import { phoneValidationError, sessionsAllowedForCycle } from '@/lib/utils'
 import { baseAmountForClass, applyDiscount } from '@/lib/payment'
 
 // Attaches {xName} to rows by resolving the plain-string user id fields.
@@ -32,7 +32,7 @@ async function attachMonthSummaries(enrollments: any[]) {
       prisma.classAttendance.count({ where: { enrollmentId: e.id, date: { gte: cycleStart }, status: 'ABSENT' } }),
     ])
     const sessionsAllowed = sessionsAllowedForEnrollment(e, e.class || {})
-    const remaining = Math.max(0, sessionsAllowed - attended)
+    const remaining = Math.max(0, sessionsAllowed - attended - absent)
     return { ...e, monthSummary: { attended, excused, absent, remaining, sessionsAllowed } }
   }))
 }
@@ -100,7 +100,6 @@ export async function GET(req: NextRequest) {
   for (const m of allMatching) {
     for (const e of m.enrollments) (e as any).status = statusMap.get(e.id) || e.status
     const overallStatus = m.enrollments.some(e => e.status === 'ACTIVE') ? 'ACTIVE'
-      : m.enrollments.some(e => e.status === 'FROZEN') ? 'FROZEN'
       : m.enrollments.some(e => e.status === 'EXPIRED') ? 'EXPIRED'
       : m.enrollments.length > 0 ? 'CANCELED' : 'NO_PLAN'
     withStatus.push({ ...m, overallStatus })
@@ -157,10 +156,11 @@ export async function POST(req: NextRequest) {
       const startDate = body.startDate ? new Date(body.startDate) : new Date()
       const endDate = new Date(startDate); endDate.setDate(endDate.getDate() + cls.durationDays)
       const sessionCount = cls.type === 'PRIVATE' ? Math.max(1, Number(body.sessionCount) || 1) : null
+      const totalSessions = cls.type === 'PRIVATE' ? null : sessionsAllowedForCycle(cls.daysOfWeek.length, cls.durationDays)
 
       const enrollment = await prisma.classEnrollment.create({
         data: {
-          memberId: member.id, classId: cls.id, status: 'ACTIVE', startDate, endDate, sessionCount,
+          memberId: member.id, classId: cls.id, status: 'ACTIVE', startDate, endDate, sessionCount, totalSessions,
           addedById: user.id, lastAction: 'CREATED', lastActionById: user.id, lastActionAt: new Date(),
         },
       })

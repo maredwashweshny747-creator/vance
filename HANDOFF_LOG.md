@@ -32,7 +32,96 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
-## 2026-08-04 (2) — Claude (chat) — Performance fix (N+1 batching), real session dates, edit photo, cover coach wired into Classes -> Manage Attendance
+## 2026-08-05 — Claude (chat) — Freeze removed, excuse logic reworked, portal sessions calendar, payroll cover-fix
+
+**Changed:**
+- **Freeze completely removed**: `ClassEnrollment.freezeStartedAt`/
+  `totalFreezeDaysLeft` dropped from schema, `FROZEN` dropped from the
+  status enum comment, the freeze/unfreeze PATCH actions deleted, every
+  Freeze/Unfreeze button and FROZEN-branch in the UI removed (fighters
+  page, classes API enrollment-count filters, class-attendance roster,
+  analytics, branches page, portal, dashboard, landing page copy, seed
+  data). Verified with a full repo grep — zero references remain.
+  **Migration required** (column drop).
+- **Excuse logic reworked to match spec exactly**: an excused session no
+  longer just "doesn't count as attended" — it now pushes the
+  enrollment's `endDate` out by exactly one real scheduled occurrence
+  (new `nextScheduledDate()` in `src/lib/sessions.ts`), so 8
+  sessions/2x-week with one excuse genuinely ends on the next Tuesday
+  instead of the original Sunday, exactly like the worked example.
+  Absent-without-excuse now correctly counts against the session
+  allotment the same as Attended (previously only Attended did).
+- **New `ClassEnrollment.totalSessions` field** — this was necessary,
+  not optional: naively extending `endDate` for excuses would have also
+  inflated the old span-based "sessions allowed" formula (a longer date
+  range → the formula thinks more sessions are allowed, not the same
+  number pushed later). `totalSessions` is set once at enroll/renew/
+  switch time from the *original* nominal cycle length and never
+  recalculated from a possibly-excuse-extended `endDate`.
+  `sessionsAllowedForEnrollment()` now prefers this stored value,
+  falling back to the old live-span formula only for legacy enrollments
+  created before this field existed.
+- **Portal sessions calendar**: the fighter portal's Classes tab now
+  shows, per enrollment, "X attended · Y remaining — view sessions
+  calendar," expandable into the same real-date/status list used on the
+  admin fighters page. Extracted the list-building logic (private vs.
+  group, excuse-aware remaining count) into a new shared
+  `src/lib/enrollmentSessions.ts` — the staff `/api/class-enrollments`
+  endpoint and the public `/api/portal` endpoint both call it now
+  instead of duplicating the logic a third time. Portal's expiry check
+  was also switched to the batched version while touching this file.
+- **Coach payroll cover-fix**: `countSessions()` (the function that
+  actually computes pay, as opposed to `countPlayersAttended` which is
+  just a stats display) was never made cover-aware in an earlier
+  session — a cover coach didn't get credited and the absent coach still
+  did. Extracted the shared `getCoveredAwayMap()` override-lookup (used
+  by both `countSessions` and `countPlayersAttended` now) and applied
+  the same cover-attribution logic to the pay calculation, scoped by
+  month and class type. A covered session now pays the cover coach, not
+  the absent one — matches the request exactly.
+
+**Why:** freeze was explicitly asked to be removed entirely; the excuse
+math needed to genuinely extend the fighter's session window rather than
+just skip counting; the portal needed the same calendar view already
+built for staff; and payroll pay calculation had the same cover-crediting
+gap that the *stats* display was already fixed for two sessions ago —
+this closes that gap for the number that actually determines a coach's
+paycheck.
+
+**Watch out for:**
+- Un-excusing a session (changing an EXCUSED mark back to something else)
+  does **not** shrink `endDate` back — only granting an excuse extends
+  it, there's no reverse operation. Flagged as a known limitation rather
+  than implemented, given the added complexity of safely reversing a
+  date extension that might have already had other attendance recorded
+  against it.
+- `totalSessions` is `null` for enrollments created before this
+  migration — they'll keep using the old live-span formula
+  (`sessionsAllowedForEnrollment`'s fallback path) until they're renewed
+  or switched, at which point they get a real stored value. Not a bug,
+  just means pre-existing enrollments won't get excuse-safe math
+  retroactively without a renewal.
+- Switching a fighter to a class with a different weekly frequency
+  recalculates `totalSessions` from the *new* class's own nominal cycle
+  length (not an attempt to preserve "remaining span" from the old
+  class) — same assumption flagged in an earlier session's switch
+  rewrite, still holds.
+- `getEnrollmentSessions()` in the new shared helper does one
+  `classAttendance.findMany` per enrollment — fine for a single fighter
+  (portal) or one enrollment at a time (staff modal), but if a page ever
+  needs this for many fighters at once, it'll need batching like
+  `checkAndExpireEnrollmentsBatch` got two sessions ago.
+
+**Verified with:** `tsc --noEmit` in the working directory AND an
+isolated re-extraction with `node_modules` symlinked in — identical
+result both places (same single pre-existing unrelated `TS2322`, zero
+new errors). Did not have DB access in this sandbox to actually replay
+the "8 sessions, excuse one, last session moves from Sun to Tue"
+scenario end-to-end, or to confirm the payroll cover-fix against a real
+multi-coach dataset — both verified by code inspection only. Worth a
+live re-test of both before considering this fully closed.
+
+---
 
 **Changed:**
 - **Performance — found and fixed the main slowness cause**: the Fighters
