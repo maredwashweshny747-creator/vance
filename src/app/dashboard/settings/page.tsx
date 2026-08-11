@@ -135,6 +135,7 @@ export default function SettingsPage() {
           <div>
             <label className="label">Default WhatsApp Message</label>
             <textarea value={gymData.whatsappMessageTemplate} onChange={e=>setGymData(d=>({...d,whatsappMessageTemplate:e.target.value}))}
+              dir="auto" lang="ar"
               className="input h-24 resize-none" placeholder="Hi {fightername}, this is Ironclad Fight Club checking in... Your Fighter ID is {fighterid}." />
             <p className="text-dark-500 text-xs mt-1.5">Pre-fills whenever you tap the WhatsApp button on a fighter&apos;s profile. Placeholders: <span className="font-mono text-dark-400">{'{fightername}'}</span>, <span className="font-mono text-dark-400">{'{fighterid}'}</span>, <span className="font-mono text-dark-400">{'{fighter qrcode}'}</span> (a link to their check-in QR image).</p>
           </div>

@@ -71,7 +71,11 @@ export default function ClassAttendancePage() {
     setMarkingCoach(true)
     const res = await fetch('/api/coach-attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coachId: coachInfo?.coach.id, classId, date, status, method: 'MANUAL' }) })
     setMarkingCoach(false)
-    if (res.ok) { toast.success(`Coach marked ${status.toLowerCase()}`); load() } else toast.error('Failed to save')
+    if (res.ok) {
+      toast.success(`Coach marked ${status.toLowerCase()}`)
+      if (status === 'ABSENT') setCoverPicker(true) // surface the cover-coach option immediately, no extra click needed
+      load()
+    } else toast.error('Failed to save')
   }
 
   useEffect(() => { if (classId) load() }, [classId, date]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -135,7 +139,7 @@ export default function ClassAttendancePage() {
               if (!todaysMark) return (
                 <div className="flex gap-1.5 flex-shrink-0">
                   <button onClick={() => markCoach('ATTENDED')} disabled={markingCoach} className="px-2.5 py-1.5 rounded-lg bg-primary-400/10 border border-primary-400/20 text-primary-400 text-xs hover:bg-primary-400/20">Attended</button>
-                  <button onClick={() => markCoach('ABSENT')} disabled={markingCoach} className="px-2.5 py-1.5 rounded-lg bg-crimson-500/10 border border-crimson-500/20 text-crimson-400 text-xs hover:bg-crimson-500/20">Absent</button>
+                  <button onClick={() => markCoach('ABSENT')} disabled={markingCoach} className="px-2.5 py-1.5 rounded-lg bg-crimson-500/10 border border-crimson-500/20 text-crimson-400 text-xs hover:bg-crimson-500/20">Absent / Assign Cover Coach</button>
                 </div>
               )
               if (todaysMark.status === 'ABSENT') {

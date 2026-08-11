@@ -1,7 +1,7 @@
 'use client'
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Swords, Hash, ArrowRight, UserCheck, Calendar, TrendingUp, Dumbbell, QrCode, CheckCircle2, Clock, Target, Plus, Weight, X, MessageSquare, Send } from 'lucide-react'
+import { Swords, Hash, ArrowRight, UserCheck, Calendar, QrCode, CheckCircle2, Clock, X, MessageSquare, Send } from 'lucide-react'
 import { cn, formatDate, getInitials } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
@@ -14,8 +14,7 @@ export default function MemberPortal() {
   const [fighterId, setFighterId] = useState('')
   const [loading, setLoading] = useState(false)
   const [data, setData] = useState<PortalData | null>(null)
-  const [tab, setTab] = useState<'home'|'classes'|'workout'|'progress'|'qr'>('home')
-  const [progressForm, setProgressForm] = useState({ weight:'', bodyFat:'', waist:'', notes:'' })
+  const [tab, setTab] = useState<'home'|'classes'|'qr'>('home')
   const [photoZoom, setPhotoZoom] = useState(false)
   const [openCalendarFor, setOpenCalendarFor] = useState<string | null>(null)
   const [feedbackMsg, setFeedbackMsg] = useState('')
@@ -31,13 +30,6 @@ export default function MemberPortal() {
       setData(d); setStep('portal')
     } catch { toast.error('Connection error') }
     setLoading(false)
-  }
-
-  async function addProgress(e:React.FormEvent) {
-    e.preventDefault()
-    if(!data) return
-    const res = await fetch('/api/portal', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ _type:'add_progress', memberId:data.member.id, weight:+progressForm.weight||null, bodyFat:+progressForm.bodyFat||null, waist:+progressForm.waist||null, notes:progressForm.notes }) })
-    if(res.ok){ toast.success('Progress logged!'); setProgressForm({weight:'',bodyFat:'',waist:'',notes:''}) } else { toast.error('Failed') }
   }
 
   async function submitFeedback() {
@@ -124,8 +116,6 @@ export default function MemberPortal() {
           {([
             {id:'home',label:'Home',icon:UserCheck},
             {id:'classes',label:'Classes',icon:Calendar},
-            {id:'workout',label:'Workout',icon:Dumbbell},
-            {id:'progress',label:'Progress',icon:TrendingUp},
             {id:'qr',label:'My QR',icon:QrCode},
           ] as const).map(t=>{
             const Icon = t.icon
@@ -203,11 +193,36 @@ export default function MemberPortal() {
                   </div>
                   <span className={cn('badge text-xs flex-shrink-0', statusColors[e.status]||'')}>{e.status}</span>
                 </button>
-                {e.sessions && (
-                  <button onClick={() => setOpenCalendarFor(openCalendarFor === e.id ? null : e.id)} className="text-primary-400 text-xs mt-2 flex items-center gap-1">
-                    {e.sessions.attended} attended · {e.sessions.remaining} remaining — {openCalendarFor === e.id ? 'hide' : 'view'} sessions calendar
-                  </button>
-                )}
+                {e.sessions && (() => {
+                  const list = e.sessions.sessions || []
+                  const absentCount = list.filter((s: any) => s.status === 'ABSENT' || s.status === 'MISSED').length
+                  const excusedCount = list.filter((s: any) => s.status === 'EXCUSED').length
+                  return (
+                    <>
+                      <div className="grid grid-cols-4 gap-2 mt-3">
+                        <div className="bg-dark-750 border border-dark-700 rounded-lg py-2 text-center">
+                          <div className="text-primary-400 text-lg font-bold">{e.sessions.attended}</div>
+                          <div className="text-dark-500 text-[10px] uppercase tracking-wide mt-0.5">Attended</div>
+                        </div>
+                        <div className="bg-dark-750 border border-dark-700 rounded-lg py-2 text-center">
+                          <div className="text-crimson-400 text-lg font-bold">{absentCount}</div>
+                          <div className="text-dark-500 text-[10px] uppercase tracking-wide mt-0.5">Absent</div>
+                        </div>
+                        <div className="bg-dark-750 border border-dark-700 rounded-lg py-2 text-center">
+                          <div className="text-blue-400 text-lg font-bold">{excusedCount}</div>
+                          <div className="text-dark-500 text-[10px] uppercase tracking-wide mt-0.5">Excused</div>
+                        </div>
+                        <div className="bg-dark-750 border border-dark-700 rounded-lg py-2 text-center">
+                          <div className="text-white text-lg font-bold">{e.sessions.remaining}</div>
+                          <div className="text-dark-500 text-[10px] uppercase tracking-wide mt-0.5">Remaining</div>
+                        </div>
+                      </div>
+                      <button onClick={() => setOpenCalendarFor(openCalendarFor === e.id ? null : e.id)} className="text-primary-400 text-xs mt-2 flex items-center gap-1">
+                        {openCalendarFor === e.id ? 'Hide' : 'View'} sessions calendar
+                      </button>
+                    </>
+                  )
+                })()}
                 {openCalendarFor === e.id && e.sessions && (
                   <div className="mt-3 pt-3 border-t border-dark-700 space-y-1.5 max-h-64 overflow-y-auto">
                     {e.sessions.sessions.length === 0 ? <p className="text-dark-500 text-xs">No sessions scheduled yet.</p> :
@@ -231,84 +246,6 @@ export default function MemberPortal() {
         )}
 
         {/* WORKOUT */}
-        {tab === 'workout' && (
-          <div className="space-y-4">
-            {!member.workoutPlans?.length ? (
-              <div className="card text-center py-12">
-                <Dumbbell size={40} className="mx-auto text-dark-600 mb-3"/>
-                <p className="text-white font-semibold mb-1">No workout plan assigned yet</p>
-                <p className="text-dark-400 text-sm">Ask your coach to create a plan for you</p>
-              </div>
-            ) : member.workoutPlans.map((plan:any)=>(
-              <div key={plan.id} className="space-y-3">
-                <div className="card">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-9 h-9 bg-primary-400/10 rounded-xl flex items-center justify-center"><Target size={16} className="text-primary-400"/></div>
-                    <div><div className="text-white font-semibold">{plan.title}</div><div className="text-dark-400 text-xs">{plan.goal} · {plan.weeks} weeks</div></div>
-                  </div>
-                  {plan.description && <p className="text-dark-400 text-sm">{plan.description}</p>}
-                </div>
-                {[1,2,3,4,5,6,7].map(day=>{
-                  const dayExercises = plan.exercises.filter((ex:any)=>ex.day===day)
-                  if(!dayExercises.length) return null
-                  const dayNames = ['','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday']
-                  return (
-                    <div key={day} className="card">
-                      <h4 className="text-primary-400 text-sm font-semibold mb-3">{dayNames[day]}</h4>
-                      <div className="space-y-2">
-                        {dayExercises.map((ex:any)=>(
-                          <div key={ex.id} className="flex items-center justify-between py-2 border-b border-dark-700 last:border-0">
-                            <span className="text-white text-sm">{ex.name}</span>
-                            <span className="text-dark-400 text-xs">{ex.sets} × {ex.reps} · {ex.rest}s rest</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* PROGRESS */}
-        {tab === 'progress' && (
-          <div className="space-y-4">
-            <form onSubmit={addProgress} className="card space-y-3">
-              <h3 className="text-white font-semibold flex items-center gap-2"><Plus size={16} className="text-primary-400"/>Log Today&apos;s Measurements</h3>
-              <div className="grid grid-cols-3 gap-3">
-                <div><label className="label text-xs">Weight (kg)</label><input type="number" value={progressForm.weight} onChange={e=>setProgressForm(f=>({...f,weight:e.target.value}))} step={0.1} className="input text-sm py-2" placeholder="75.5"/></div>
-                <div><label className="label text-xs">Body Fat %</label><input type="number" value={progressForm.bodyFat} onChange={e=>setProgressForm(f=>({...f,bodyFat:e.target.value}))} step={0.1} className="input text-sm py-2" placeholder="18.5"/></div>
-                <div><label className="label text-xs">Waist (cm)</label><input type="number" value={progressForm.waist} onChange={e=>setProgressForm(f=>({...f,waist:e.target.value}))} step={0.5} className="input text-sm py-2" placeholder="80"/></div>
-              </div>
-              <input value={progressForm.notes} onChange={e=>setProgressForm(f=>({...f,notes:e.target.value}))} className="input text-sm" placeholder="Notes (e.g. felt strong today)"/>
-              <button type="submit" className="btn-primary w-full justify-center text-sm">Save Measurements</button>
-            </form>
-
-            {member.progress?.length > 0 && (
-              <div className="card">
-                <h3 className="text-white font-semibold mb-3">Progress History</h3>
-                <div className="space-y-3">
-                  {member.progress.map((p:any, i:number)=>(
-                    <div key={p.id} className="flex items-start gap-3 pb-3 border-b border-dark-700 last:border-0">
-                      <div className="w-8 h-8 rounded-full bg-primary-400/10 flex items-center justify-center text-xs font-bold text-primary-400 flex-shrink-0">{member.progress.length-i}</div>
-                      <div className="flex-1">
-                        <div className="flex flex-wrap gap-3 text-sm">
-                          {p.weight && <span className="text-white">{p.weight}kg</span>}
-                          {p.bodyFat && <span className="text-dark-300">{p.bodyFat}% BF</span>}
-                          {p.waist && <span className="text-dark-300">{p.waist}cm waist</span>}
-                        </div>
-                        {p.notes && <p className="text-dark-500 text-xs mt-0.5">{p.notes}</p>}
-                        <p className="text-dark-600 text-xs mt-0.5">{formatDate(p.recordedAt)}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* QR CODE */}
         {tab === 'qr' && (
           <div className="space-y-4">

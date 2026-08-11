@@ -32,7 +32,62 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
-## 2026-08-08 — Claude (chat) — Coach payroll semantics fixed (critical), portal login simplified, dashboard N+1 fixed, leads debounce bug fixed, indexes added
+## 2026-08-08 (2) — Claude (chat) — Portal tabs trimmed, session stats visible, Arabic WhatsApp message, cover-coach visibility
+
+**Scope note:** this was an explicit "v15 is perfect, only touch these specific things"
+request — no re-audit of performance/pagination/N+1 work was done this round, and
+nothing outside the files below was touched.
+
+**Changed:**
+- **Portal**: removed the Workout and Progress tabs entirely (nav buttons, both
+  content sections, the now-dead `addProgress`/`progressForm` state, and the
+  now-unused icon imports). The backend `add_progress` handler on `/api/portal`
+  POST and the `workoutPlans`/`progress` data still get fetched/included — I left
+  those alone since only the *tabs* were asked to go, and removing the backend
+  too would touch more surface than requested for a purely cosmetic ask.
+- **Portal Classes tab**: added a visible 4-tile Attended / Absent / Excused /
+  Remaining stat row per class, computed client-side from the session list the
+  backend already returns (`e.sessions.sessions`) — no backend change, so the
+  admin-facing session modal that shares the same underlying data is untouched.
+- **Settings → Default WhatsApp Message**: added `dir="auto" lang="ar"` to the
+  textarea. The value itself was never restricted anywhere (no filtering on the
+  frontend, backend, or DB column) — the actual problem was that a plain
+  left-to-right textarea makes typing Arabic look broken (cursor jumps, wrong
+  alignment) even though it saves correctly. This is a display fix, not a data
+  fix, and needed no other layer touched.
+- **Cover coach visibility on Classes → Manage Attendance**: re-verified the
+  feature end-to-end (backend `coverCoachId` handling, the `coachInfo` fetch,
+  the render conditions) and it's still fully intact — nothing was actually
+  missing in the code. Made two small improvements in case this was a
+  discoverability issue rather than a functional one: the "Absent" button is
+  now labeled "Absent / Assign Cover Coach", and marking someone absent now
+  auto-opens the cover-coach picker immediately instead of requiring a second
+  click to reveal it.
+
+**Why:** trim the portal to what fighters actually use; make session
+attended/absent/excused/remaining counts visible to the fighter, not just
+buried behind an expand; fix a real Arabic-typing UX bug; make sure Cover
+Coach is impossible to miss on the Classes side.
+
+**Watch out for:**
+- I could not reproduce a missing Cover Coach *bug* by reading the code — every
+  piece of it (POST handler, GET response shape including `coveredBy`, the
+  render conditions) traced through correctly. If it's still not showing up for
+  you after this, it's worth telling me exactly which page URL and what you see
+  after marking a coach absent (a screenshot or the exact button/text present),
+  since I can't run the app live in this environment to reproduce it myself.
+- `/api/portal` POST still accepts `_type: 'add_progress'` and the GET still
+  fetches `workoutPlans`/`progress` — dead weight now that the UI can't reach
+  them, but left in place since only the tabs were asked to be removed. Worth
+  a follow-up cleanup pass if you want that backend surface gone too.
+
+**Verified with:** `tsc --noEmit` in the working directory AND an isolated
+re-extraction with `node_modules` symlinked in — identical result both places
+(same single pre-existing unrelated `TS2322`, zero new errors). No DB/browser
+access in this sandbox, so the Arabic textarea rendering and the cover-coach
+flow are verified by code inspection only, not a live click-through.
+
+---
 
 ### Files modified
 - `src/app/api/payroll/route.ts` — `countSessions` completely rewritten (see below). `countPlayersAttended` untouched (was already correct).
