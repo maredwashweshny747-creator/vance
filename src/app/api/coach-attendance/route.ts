@@ -4,6 +4,14 @@ import { getSessionAndGym } from '@/lib/getGym'
 import { scheduledOccurrencesThisMonth } from '@/lib/enrollment'
 
 function startOfDay(d: Date) { const x = new Date(d); x.setHours(0,0,0,0); return x }
+// Parses a plain "YYYY-MM-DD" date string as UTC midnight, immune to server timezone —
+// new Date(str) + local setHours(0) can silently shift the date by a day depending on
+// where the server runs, which would make a just-created mark invisible to same-day lookups.
+function parseDateOnly(input: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(input)
+  if (m) return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+  return startOfDay(new Date(input))
+}
 const DOW = ['SUN','MON','TUE','WED','THU','FRI','SAT']
 
 function isScheduledToday(cls: { daysOfWeek: string[]; isOneTime: boolean; sessionDate: Date | null }) {
@@ -101,7 +109,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json()
   let { coachId, classId, status, method, coverCoachId } = body
-  const date = body.date ? startOfDay(new Date(body.date)) : startOfDay(new Date())
+  const date = body.date ? parseDateOnly(body.date) : startOfDay(new Date())
 
   if (!coachId && !classId) return NextResponse.json({ error: 'coachId or classId required' }, { status: 400 })
 
@@ -143,8 +151,10 @@ export async function POST(req: NextRequest) {
     if (scheduledToday.length === 0) return NextResponse.json({ error: 'No classes scheduled for this coach today' }, { status: 400 })
     if (scheduledToday.length > 1) return NextResponse.json({ error: 'MULTIPLE_CLASSES', classes: scheduledToday.map(c => ({ id: c.id, name: c.name })) }, { status: 409 })
     classId = scheduledToday[0].id
-  } else if (!coach.classes.some(c => c.id === classId)) {
-    return NextResponse.json({ error: 'That class is not assigned to this coach' }, { status: 400 })
+  } else {
+    const targetClass = await prisma.gymClass.findFirst({ where: { id: classId, gymId: gym.id } })
+    if (!targetClass) return NextResponse.json({ error: 'Class not found' }, { status: 404 })
+    if (targetClass.coachId !== coachId) return NextResponse.json({ error: 'That class is not assigned to this coach' }, { status: 400 })
   }
 
   // At most one attendance record per class/session: if already marked ATTENDED,

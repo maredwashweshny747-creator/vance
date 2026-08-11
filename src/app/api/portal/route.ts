@@ -26,8 +26,6 @@ export async function GET(req: NextRequest) {
     where: { gymId: gym.id, fighterId },
     include: {
       enrollments: { include: { class: { include: { coach: true } } }, orderBy: { createdAt: 'asc' } },
-      workoutPlans: { where: { isActive: true }, include: { exercises: true }, take: 1 },
-      progress: { orderBy: { recordedAt: 'desc' }, take: 5 },
     },
   })
   if (!member) return NextResponse.json({ error: 'Fighter ID not found' }, { status: 404 })
@@ -51,10 +49,6 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  if (body._type === 'add_progress') {
-    const progress = await prisma.memberProgress.create({ data: { memberId: body.memberId, weight: body.weight, bodyFat: body.bodyFat, waist: body.waist, notes: body.notes } })
-    return NextResponse.json(progress)
-  }
   if (body._type === 'submit_feedback') {
     if (!body.message || !String(body.message).trim()) return NextResponse.json({ error: 'Message is required' }, { status: 400 })
     const member = await prisma.member.findUnique({ where: { id: body.memberId }, select: { gymId: true } })

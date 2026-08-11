@@ -64,7 +64,7 @@ export default function ClassAttendancePage() {
     setMarkingCoach(true)
     const res = await fetch('/api/coach-attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ coachId: coachInfo.coach.id, classId, date, status: 'ATTENDED', coverCoachId, method: 'MANUAL' }) })
     setMarkingCoach(false); setCoverPicker(false)
-    if (res.ok) { toast.success('Cover coach assigned'); load() } else toast.error('Failed to save')
+    if (res.ok) { toast.success('Cover coach assigned'); load() } else { const d = await res.json().catch(()=>({})); toast.error(d.error || 'Failed to save') }
   }
 
   async function markCoach(status: string) {
@@ -75,7 +75,7 @@ export default function ClassAttendancePage() {
       toast.success(`Coach marked ${status.toLowerCase()}`)
       if (status === 'ABSENT') setCoverPicker(true) // surface the cover-coach option immediately, no extra click needed
       load()
-    } else toast.error('Failed to save')
+    } else { const d = await res.json().catch(()=>({})); toast.error(d.error || 'Failed to save') }
   }
 
   useEffect(() => { if (classId) load() }, [classId, date]) // eslint-disable-line react-hooks/exhaustive-deps

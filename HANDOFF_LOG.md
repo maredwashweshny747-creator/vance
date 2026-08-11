@@ -32,7 +32,78 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
-## 2026-08-08 (2) — Claude (chat) — Portal tabs trimmed, session stats visible, Arabic WhatsApp message, cover-coach visibility
+## 2026-08-10 — Claude (chat) — Found the real cover-coach bug (timezone), removed demo credentials, cleaned up dead portal API surface
+
+**Changed:**
+- **Found an actual bug in "mark coach absent" on Classes → Manage Attendance**:
+  the `date` field sent from the page (a plain `"YYYY-MM-DD"` string) was being
+  parsed with `new Date(dateStr)` then `.setHours(0,0,0,0)` — the second step
+  uses the *server's local timezone*, not UTC. Depending on where the server
+  runs relative to UTC, that can silently shift the stored date by a day. The
+  page's "is there already a mark for today?" check compares dates using
+  `toISOString()` (always UTC) — so a mark saved under the wrong local-shifted
+  date would never match, and the UI would look exactly like "nothing
+  happened": you mark someone absent, and it just... doesn't seem to work
+  and the cover option never appears, because the page can never find the
+  mark it just created. Fixed by parsing date-only strings as UTC midnight
+  explicitly (new `parseDateOnly()` helper) in both
+  `src/app/api/coach-attendance/route.ts` and `src/app/api/class-attendance/route.ts`
+  (the fighter-attendance sibling had the identical pattern).
+- **Also hardened the class-ownership check** in the same coach-attendance
+  route: it was validating against the coach's *APPROVED-only* classes list,
+  so marking attendance for a class that wasn't (yet) approved would fail
+  with "That class is not assigned to this coach" even for the class's own
+  assigned coach. Now checks directly against the class record's `coachId`.
+- **Error messages now surfaced properly**: `markCoach`/`assignCover` on the
+  Manage Attendance page were swallowing the real server error and always
+  showing a generic "Failed to save" — now shows whatever the API actually
+  said, which will make any future issue immediately diagnosable instead of
+  a silent dead end.
+- **Demo credentials removed** from `/auth/login` — the "Demo:
+  demo@vancefc.app / demo123456" hint block is gone entirely.
+- **Dead API surface removed**: last session's tab removal (Workout/Progress)
+  left the backend still fetching `workoutPlans`/`progress` on every portal
+  login and still exposing an `add_progress` POST handler with no caller
+  left anywhere in the app. Both removed from `/api/portal` — one fewer
+  relation fetched per login, one less unreachable code path.
+
+**Why:** the reported "mark absent doesn't work, no cover option appears" had
+a real root cause once traced all the way through — not a missing feature (as
+confirmed last session, the cover-coach code itself is correct), but a
+silent timezone bug in date handling that made the just-created mark
+invisible to the page's own "does today have a mark yet?" check. Also: demo
+credentials shouldn't ship on a login screen, and last session's own
+follow-up note about dead portal API surface is now closed out.
+
+**Watch out for:**
+- If your server's local timezone happens to be UTC (or close to midnight
+  UTC+0), this specific bug wouldn't have reproduced for you — which is
+  exactly why it could sit unnoticed. Worth confirming your deployment
+  server's `TZ` setting; the fix makes date handling immune to it either way.
+- I did not do another broad performance/N+1 audit this round per the
+  "everything is slow" note — the last two sessions already covered the
+  dashboard, leads search, payroll counting, and pagination in depth. I only
+  removed the two concretely-dead API paths described above (portal
+  workout/progress data + the add_progress endpoint) rather than searching
+  for new ones from scratch, per the "only the unused" instruction — I don't
+  want to claim a broader audit than I actually did.
+- `MemberProgress` and `WorkoutPlan` Prisma models and their staff-side
+  creation paths (if any exist elsewhere) are untouched — only the portal's
+  own read/write of them was removed, since those are the only paths that
+  became unreachable when the tabs went away last session.
+
+**Verified with:** `tsc --noEmit` in the working directory AND an isolated
+re-extraction with `node_modules` symlinked in — identical result both
+places (same single pre-existing unrelated `TS2322`, zero new errors), plus
+a brace-balance sanity check on the heavily-edited `coach-attendance` route.
+No DB/browser access in this sandbox, so the timezone fix is verified by
+reasoning through the exact code path (UTC-anchored parsing on write,
+UTC-based comparison on read, now consistent both ways) rather than by
+reproducing the original bug and confirming it's gone — worth a live
+re-test of "mark coach absent → cover option appears" before considering
+this fully closed.
+
+---
 
 **Scope note:** this was an explicit "v15 is perfect, only touch these specific things"
 request — no re-audit of performance/pagination/N+1 work was done this round, and

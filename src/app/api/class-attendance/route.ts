@@ -6,6 +6,12 @@ import { checkAndExpireEnrollment, checkAndExpireEnrollmentsBatch } from '@/lib/
 import { generateSessionDates, nextScheduledDate } from '@/lib/sessions'
 
 function startOfDay(d: Date) { const x = new Date(d); x.setHours(0,0,0,0); return x }
+// Parses a plain "YYYY-MM-DD" date string as UTC midnight, immune to server timezone.
+function parseDateOnly(input: string): Date {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(input)
+  if (m) return new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+  return startOfDay(new Date(input))
+}
 
 // GET ?classId=X&month=M&year=Y — every session date this class has this month, with a
 // quick "has attendance been taken" signal, so Manage Attendance can show a session
@@ -111,7 +117,7 @@ export async function POST(req: NextRequest) {
   const enr = await prisma.classEnrollment.findFirst({ where: { id: enrollmentId, member: { gymId: gym.id } }, include: { class: true } })
   if (!enr) return NextResponse.json({ error: 'Enrollment not found' }, { status: 404 })
 
-  const day = startOfDay(new Date(date))
+  const day = parseDateOnly(date)
 
   const mark = await prisma.classAttendance.upsert({
     where: { enrollmentId_date: { enrollmentId, date: day } },

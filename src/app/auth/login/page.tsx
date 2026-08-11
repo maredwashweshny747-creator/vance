@@ -59,9 +59,6 @@ export default function LoginPage() {
               {loading ? 'Signing in...' : <><span>Sign In</span><ArrowRight size={16}/></>}
             </button>
           </form>
-          <div className="mt-6 pt-6 border-t border-dark-600">
-            <p className="text-center text-xs text-dark-400">Demo: <span className="text-primary-400 font-mono">demo@vancefc.app</span> / <span className="text-primary-400 font-mono">demo123456</span></p>
-          </div>
         </div>
         <p className="text-center text-sm text-dark-400 mt-6">Don&apos;t have an account? <Link href="/auth/register" className="text-primary-400 hover:underline">Start free trial</Link></p>
       </motion.div>
