@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
+import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -270,14 +271,30 @@ export default function FightersPage() {
   const [photoZoom, setPhotoZoom] = useState<{ photo: string; name: string } | null>(null)
   const [sessionsModal, setSessionsModal] = useState<any>(null)
   const [sessionsLoading, setSessionsLoading] = useState(false)
+  const [sessionsModalEnrollmentId, setSessionsModalEnrollmentId] = useState<string | null>(null)
+  const [excusingDate, setExcusingDate] = useState<string | null>(null)
 
   async function openSessionsModal(enrollmentId: string) {
     setSessionsModal({ loading: true })
+    setSessionsModalEnrollmentId(enrollmentId)
     setSessionsLoading(true)
     const res = await fetch(`/api/class-enrollments?id=${enrollmentId}`)
     setSessionsLoading(false)
     if (res.ok) setSessionsModal(await res.json())
     else { setSessionsModal(null); toast.error('Failed to load sessions') }
+  }
+
+  async function markExcuse(dateIso: string) {
+    if (!sessionsModalEnrollmentId) return
+    const dateOnly = dateIso.slice(0, 10)
+    setExcusingDate(dateOnly)
+    const res = await fetch('/api/class-attendance', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enrollmentId: sessionsModalEnrollmentId, date: dateOnly, status: 'EXCUSED' }),
+    })
+    setExcusingDate(null)
+    if (res.ok) { toast.success('Session excused'); openSessionsModal(sessionsModalEnrollmentId); refreshSelected(); loadList() }
+    else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to excuse session') }
   }
   const [whatsappTemplate, setWhatsappTemplate] = useState('')
   const [editingFighter, setEditingFighter] = useState(false)
@@ -681,7 +698,7 @@ export default function FightersPage() {
                       <div key={e.id} className="card">
                         <div className="flex items-start justify-between mb-2">
                           <div>
-                            <div className="text-white font-semibold text-sm">{e.class.name}</div>
+                            <Link href={`/dashboard/classes/${e.classId}/attendance`} className="text-white font-semibold text-sm hover:text-primary-400 hover:underline">{e.class.name}</Link>
                             <div className="text-dark-400 text-xs">{disciplineLabel(e.class.category)} · <DaySchedule days={e.class.daysOfWeek} /></div>
                           </div>
                           <span className={cn('badge text-xs', membershipColors[e.status])}>{e.status}</span>
@@ -909,10 +926,20 @@ export default function FightersPage() {
                       : s.status === 'EXCUSED' ? 'text-blue-400 bg-blue-400/10 border-blue-400/20'
                       : s.status === 'UPCOMING' ? 'text-dark-400 bg-dark-700 border-dark-600'
                       : 'text-crimson-400 bg-crimson-400/10 border-crimson-400/20' // ABSENT or MISSED
+                    const canExcuse = s.status !== 'ATTENDED' && s.status !== 'EXCUSED'
+                    const dateKey = String(s.date).slice(0, 10)
                     return (
                       <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-dark-750 border border-dark-700">
                         <span className="text-white text-sm">{new Date(s.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
-                        <span className={cn('badge text-xs', badge)}>{s.status === 'MISSED' ? 'Absent' : s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
+                        <div className="flex items-center gap-2">
+                          <span className={cn('badge text-xs', badge)}>{s.status === 'MISSED' ? 'Absent' : s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
+                          {canExcuse && (
+                            <button onClick={() => markExcuse(dateKey)} disabled={excusingDate === dateKey}
+                              className="text-blue-400 text-xs font-medium hover:text-blue-300 disabled:opacity-50">
+                              {excusingDate === dateKey ? 'Excusing…' : 'Excuse'}
+                            </button>
+                          )}
+                        </div>
                       </div>
                     )
                   })}

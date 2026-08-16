@@ -32,6 +32,62 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
+---
+
+## 2026-08-16 — Claude (chat) — Class name links to its attendance page, excuse sessions directly from the fighters tab
+
+**Note:** this session started in a fresh sandbox (previous one had reset) —
+restored the working copy from the last delivered zip (`vance-v17.zip`)
+before making any changes, so this builds directly on top of everything in
+the 2026-08-10 entry above with nothing lost or re-done.
+
+**Changed:**
+- **Fighters page → class name is now a link**: each enrollment's class name
+  in the fighter detail panel now links straight to
+  `/dashboard/classes/[classId]/attendance` (the Manage Attendance page for
+  that class), so reception can jump from "this fighter's Kickboxing
+  subscription" directly into "manage today's Kickboxing attendance"
+  without going through the Classes tab first.
+- **Excuse a session directly from the fighters tab**: the existing
+  session-by-session modal (opened by tapping the Remaining tile) was
+  read-only — now every session that isn't already Attended or Excused gets
+  an inline "Excuse" button. Clicking it calls the same
+  `POST /api/class-attendance` endpoint the Manage Attendance page already
+  uses (`status: 'EXCUSED'`), so it's the exact same excuse logic from two
+  sessions ago (the session gets pushed out by one real occurrence, the
+  fighter keeps their full session count) — reception can now do this
+  without leaving the fighter's own page. After excusing, the modal
+  reloads itself plus the fighter's card and the roster list, so the
+  updated Remaining count is visible immediately.
+
+**Why:** faster navigation from a fighter straight into that class's
+attendance management, and letting reception handle an exception/excuse
+right from where they're already looking at a fighter's sessions, instead
+of needing to separately open Classes → that class → find the right date.
+
+**Watch out for:**
+- The Excuse button is available on any Upcoming, Absent, or Missed
+  (unmarked past) session — including retroactively excusing an old missed
+  session. That's intentional (matches "make the exception for the one he
+  wants" — any session, not just future ones) but worth knowing it's not
+  restricted to only-upcoming sessions.
+- For PRIVATE (session-pack) classes, the sessions list only shows sessions
+  that already have a real attendance record (no synthetic
+  Upcoming/Missed rows, since private sessions are booked ad-hoc). Excusing
+  one there still works and converts it to EXCUSED, but since private
+  classes have no weekly schedule, there's no "next occurrence" to push the
+  cycle out to — this matches the private-session design from two sessions
+  ago (session-count based, not calendar-based) and isn't a new gap.
+
+**Verified with:** `tsc --noEmit` in the working directory AND an isolated
+re-extraction with `node_modules` symlinked in — identical result both
+places (same single pre-existing unrelated `TS2322`, zero new errors). No
+DB/browser access in this sandbox, so the actual click-through (link
+navigation, excuse button, modal refresh) is verified by code inspection
+only.
+
+---
+
 ## 2026-08-10 — Claude (chat) — Found the real cover-coach bug (timezone), removed demo credentials, cleaned up dead portal API surface
 
 **Changed:**
