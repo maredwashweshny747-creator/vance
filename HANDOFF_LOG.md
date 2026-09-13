@@ -34,7 +34,128 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
-## 2026-08-16 — Claude (chat) — Class name links to its attendance page, excuse sessions directly from the fighters tab
+## 2026-09-13 (2) — Claude (chat) — Fixed the 14-vs-12 remaining-sessions bug
+
+**Note:** sandbox reset again — restored from `vance-v19.zip` before making
+changes, so this builds on everything above with nothing lost. This closes
+out the bug flagged as open in the previous entry.
+
+**Root cause confirmed:** an enrollment's `endDate` was computed as a flat
+`startDate + durationDays` (e.g. + 30 calendar days for a 1-month cycle).
+That flat window doesn't reliably contain exactly N occurrences of a
+class's weekly schedule — depending on which day of the week the
+enrollment happens to start on, a 30-day window can catch one or two
+*extra* real calendar occurrences beyond the nominal count (12 in this
+case), because 30 days is slightly more than exactly "4 weeks." The
+session-count formula assumes a clean 4-weeks-per-month, but the date
+range used to *generate* the visible session list wasn't actually bounded
+to match that assumption.
+
+**Fixed:** new `nthOccurrenceDate()` in `src/lib/sessions.ts` — instead of
+adding a flat number of calendar days, it walks forward from the start
+date counting only real scheduled occurrences and returns the date of
+exactly the Nth one. An enrollment's `endDate` is now set to that precise
+date instead of a flat day-count, in all three places a GROUP-class
+enrollment's dates get set: initial enrollment (`class-enrollments` POST
+and `members` POST), and renewal (`class-enrollments` PATCH). Since
+`generateSessionDates()` (the function that builds the visible session
+list) is bounded by `[startDate, endDate]` inclusive, and `endDate` is now
+exactly the Nth occurrence, the two can never disagree again — the session
+list will always show exactly as many sessions as "Remaining" says are
+allotted. PRIVATE classes are untouched (they were never date-range-bound
+in the first place — session-count based, not schedule based). The
+excuse-extension logic (`nextScheduledDate`) needed no changes — it already
+extends from whatever the current `endDate` is, and now that `endDate` is
+precise to begin with, the extension stays precise too.
+
+**Why:** direct fix for the reported bug — a fighter added with 12
+sessions/month was seeing 14 dates in the Remaining Sessions view.
+
+**Watch out for:**
+- This only affects *newly created or renewed* enrollments going forward.
+  Any enrollment already sitting in the database with the old flat-date
+  `endDate` will keep showing the (potentially wrong) session count until
+  it's renewed — there's no retroactive migration of existing `endDate`
+  values, since recalculating them could shift dates for sessions that
+  already happened.
+- Verified the fix in isolation (see below) rather than against a live
+  enrollment, since there's no database in this sandbox.
+
+**Verified with:** `tsc --noEmit` in the working directory AND an isolated
+re-extraction with `node_modules` symlinked in — identical result both
+places (same single pre-existing unrelated `TS2322`, zero new errors).
+Additionally ran the actual `nthOccurrenceDate`/`generateSessionDates`
+algorithm standalone (outside the app, same logic) across all 7 possible
+enrollment start days for a 3x/week class expecting 12 sessions — every
+single start day now produces exactly 12 generated dates, where several of
+them would have produced 13 or 14 under the old flat-date-math approach.
+This is a real algorithmic confirmation, not just a code-reads-fine
+inspection — but it's still not the same as clicking through the actual
+running app against a real database, which I have no way to do here.
+
+---
+
+**Note:** sandbox reset again between sessions — restored from `vance-v18.zip`
+before making changes, so this builds on everything above with nothing lost.
+The "remaining sessions shows 14 instead of 12" bug reported just before this
+request is **still open** — I had diagnosed the root cause (the enrollment's
+`endDate` is computed as a flat `startDate + durationDays`, which doesn't
+reliably land exactly on the Nth scheduled weekday occurrence — e.g. a 30-day
+window can catch one or two extra real calendar occurrences of a given
+weekday beyond the flat "4 weeks" the session-count formula assumes) but
+had not yet shipped a fix when this request came in. Flagging clearly so it
+isn't mistaken for closed — the fix would be to compute `endDate` as the
+date of the Nth actual occurrence (not `start + durationDays`) at
+enroll/renew/switch time, which would then make `generateSessionDates`
+naturally return exactly `totalSessions` dates.
+
+**Added:**
+- **`prisma/clear-data.ts`** — a full database reset script. Deletes every
+  row from every table (users, gyms, fighters, classes, payments,
+  attendance, leads, coaches, staff — everything) in FK-safe child-to-parent
+  order, leaving the schema and migration history completely untouched.
+  Requires typing `DELETE` to confirm (or pass `--yes` to skip the prompt,
+  e.g. for a CI/staging reset). Added as `npm run db:clear` in
+  `package.json` (alongside the existing `db:seed`).
+
+**Why:** clear out seed/test data cleanly before using the app with real
+gym data, without touching the schema or losing migration history.
+
+**Watch out for:**
+- This is irreversible and untested against a live database in this
+  sandbox (no DB access here) — the model list and deletion order were
+  verified against `schema.prisma` directly (every model referenced exists,
+  ordered children-before-parents so no FK constraint can be violated
+  regardless of each relation's own `onDelete` setting), but it has not
+  been run for real. Recommend trying it against a throwaway/staging
+  database first, or taking a backup, before running it against anything
+  you'd miss.
+- It wipes literally everything, including the `User` accounts (so your own
+  admin login will need to be recreated afterward — either re-run
+  `npx prisma db seed` for a fresh demo account, or sign up again via
+  `/auth/register`).
+
+**Capacity — answered here rather than in the log, since it's not a code
+change:** there's no artificial cap anywhere in the app (no hardcoded row
+limits, no pagination that silently drops data — pagination just changes
+how much is fetched per page, not how much can exist). Real capacity is
+governed by three things outside this codebase: (1) your Postgres plan's
+storage and connection limits (Prisma Postgres's tiers vary — check your
+dashboard for the specific ceiling), (2) your hosting platform's compute/
+memory limits if self-hosting or on a serverless tier with execution
+constraints, and (3) query performance at scale, which is where the app's
+own code matters — the pagination, indexing, and N+1 fixes made across
+earlier sessions (fighters/attendance/leads/payments pagination, the
+batched expiry check, the dashboard analytics rewrite, coach-attendance
+indexes) mean the app should comfortably handle a roster in the thousands
+of fighters with years of attendance/payment history without the page-load
+slowness that prompted those fixes. I have no way to load-test this in the
+current sandbox (no database, no running server), so this is an
+architectural assessment, not a benchmarked number — if you need a concrete
+figure, that requires actually running load tests against your specific
+database tier and hosting setup.
+
+---
 
 **Note:** this session started in a fresh sandbox (previous one had reset) —
 restored the working copy from the last delivered zip (`vance-v17.zip`)

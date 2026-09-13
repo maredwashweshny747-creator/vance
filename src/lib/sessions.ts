@@ -25,6 +25,38 @@ export function nextScheduledDate(cls: { daysOfWeek: string[]; isOneTime?: boole
   return null
 }
 
+/**
+ * The date of the Nth actual scheduled occurrence starting from (and including)
+ * `startDate` — this is what an enrollment's `endDate` should be set to, instead of a
+ * flat `startDate + durationDays`. A flat day-count window doesn't reliably contain
+ * exactly N occurrences of a given weekday: e.g. a 30-day window starting on a
+ * Wednesday for a Sun/Tue/Thu class can catch 13 real occurrences instead of the
+ * nominal 12 (2/week × 4 weeks × ... whatever), depending on which day the cycle
+ * happens to start on. Counting occurrences directly guarantees the enrollment's
+ * calendar window contains exactly `count` sessions — no more, no less.
+ */
+export function nthOccurrenceDate(
+  cls: { daysOfWeek: string[]; isOneTime?: boolean; sessionDate?: Date | string | null; type?: string },
+  startDate: Date,
+  count: number
+): Date {
+  if (cls.isOneTime || cls.type === 'PRIVATE' || !cls.daysOfWeek || cls.daysOfWeek.length === 0 || count <= 0) {
+    return startOfDay(startDate)
+  }
+  const cursor = startOfDay(startDate)
+  let found = 0
+  // Safety cap: at least 1 occurrence/week guaranteed within 7 days, so `count` weeks
+  // is always more than enough room even for a 1x/week schedule.
+  for (let i = 0; i < count * 7 + 14; i++) {
+    if (cls.daysOfWeek.includes(DOW[cursor.getDay()])) {
+      found++
+      if (found === count) return new Date(cursor)
+    }
+    cursor.setDate(cursor.getDate() + 1)
+  }
+  return new Date(cursor) // shouldn't happen given the cap above, but never leave it unset
+}
+
 export function generateSessionDates(
   cls: { daysOfWeek: string[]; isOneTime?: boolean; sessionDate?: Date | string | null; type?: string },
   rangeStart: Date,

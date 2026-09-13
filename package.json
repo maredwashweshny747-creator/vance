@@ -11,6 +11,7 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "db:seed": "ts-node prisma/seed.ts",
+    "db:clear": "tsx prisma/clear-data.ts",
     "postinstall": "prisma generate"
   },
   "dependencies": {

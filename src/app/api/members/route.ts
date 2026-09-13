@@ -4,6 +4,7 @@ import { getSessionAndGym } from '@/lib/getGym'
 import { checkAndExpireEnrollmentsBatch, sessionsAllowedForEnrollment } from '@/lib/enrollment'
 import { phoneValidationError, sessionsAllowedForCycle } from '@/lib/utils'
 import { baseAmountForClass, applyDiscount } from '@/lib/payment'
+import { nthOccurrenceDate } from '@/lib/sessions'
 
 // Attaches {xName} to rows by resolving the plain-string user id fields.
 async function withUserNames<T extends Record<string, any>>(rows: T[], idFields: string[]) {
@@ -154,9 +155,11 @@ export async function POST(req: NextRequest) {
       const cls = await prisma.gymClass.findFirst({ where: { id: body.classId, gymId: gym.id } })
       if (!cls) return NextResponse.json({ error: 'Class not found' }, { status: 400 })
       const startDate = body.startDate ? new Date(body.startDate) : new Date()
-      const endDate = new Date(startDate); endDate.setDate(endDate.getDate() + cls.durationDays)
       const sessionCount = cls.type === 'PRIVATE' ? Math.max(1, Number(body.sessionCount) || 1) : null
       const totalSessions = cls.type === 'PRIVATE' ? null : sessionsAllowedForCycle(cls.daysOfWeek.length, cls.durationDays)
+      const endDate = cls.type === 'PRIVATE'
+        ? (() => { const d = new Date(startDate); d.setDate(d.getDate() + cls.durationDays); return d })()
+        : nthOccurrenceDate(cls, startDate, totalSessions!)
 
       const enrollment = await prisma.classEnrollment.create({
         data: {

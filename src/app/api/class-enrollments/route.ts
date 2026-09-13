@@ -5,6 +5,7 @@ import { sessionsAllowedForCycle } from '@/lib/utils'
 import { baseAmountForClass, applyDiscount } from '@/lib/payment'
 
 import { getEnrollmentSessions } from '@/lib/enrollmentSessions'
+import { nthOccurrenceDate } from '@/lib/sessions'
 
 function calcEndDate(start: Date, durationDays: number): Date {
   const d = new Date(start)
@@ -67,8 +68,8 @@ export async function POST(req: NextRequest) {
       }
       base = offer.price
     }
-    const endDate = calcEndDate(startDate, durationDays)
     const totalSessions = cls.type === 'PRIVATE' ? null : sessionsAllowedForCycle(cls.daysOfWeek.length, durationDays)
+    const endDate = cls.type === 'PRIVATE' ? calcEndDate(startDate, durationDays) : nthOccurrenceDate(cls, startDate, totalSessions!)
 
     const enrollment = await prisma.classEnrollment.create({
       data: {
@@ -136,7 +137,8 @@ export async function PATCH(req: NextRequest) {
       }
       base = offer.price
     }
-    const newEnd = calcEndDate(newStart, durationDays)
+    const totalSessionsForRenewal = enr.class.type === 'PRIVATE' ? null : sessionsAllowedForCycle(enr.class.daysOfWeek.length, durationDays)
+    const newEnd = enr.class.type === 'PRIVATE' ? calcEndDate(newStart, durationDays) : nthOccurrenceDate(enr.class, newStart, totalSessionsForRenewal!)
     const { type: discountType, value: discountValue, originalAmount, amount } = applyDiscount(base, body.discountType, body.discountValue)
 
     // Atomic: remove the previous subscription + its payment, create a fresh
@@ -151,7 +153,7 @@ export async function PATCH(req: NextRequest) {
       const newEnrollment = await tx.classEnrollment.create({
         data: {
           memberId: enr.memberId, classId: enr.classId, status: 'ACTIVE', startDate: newStart, endDate: newEnd,
-          sessionCount, totalSessions: enr.class.type === 'PRIVATE' ? null : sessionsAllowedForCycle(enr.class.daysOfWeek.length, durationDays),
+          sessionCount, totalSessions: totalSessionsForRenewal,
           addedById: enr.addedById, lastAction: 'RENEWED', lastActionById: user.id, lastActionAt: new Date(),
         },
       })
