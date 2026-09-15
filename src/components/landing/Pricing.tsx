@@ -26,7 +26,7 @@ const plans = [
       'Standard support (email)',
     ],
     notIncluded: ['SMS automations', 'Multi-location', 'White-labeling', 'API access'],
-    cta: 'Start Free 14-Day Trial',
+    cta: 'Sign In',
     popular: false,
   },
   {
@@ -52,7 +52,7 @@ const plans = [
       'Daily data backups',
     ],
     notIncluded: ['Multi-location', 'White-labeling', 'API access'],
-    cta: 'Start Free 14-Day Trial',
+    cta: 'Sign In',
     popular: true,
   },
   {
@@ -142,7 +142,7 @@ export function Pricing() {
                 ))}
               </ul>
 
-              <Link href={plan.name === 'Enterprise' ? '/contact' : '/auth/register'}
+              <Link href={plan.name === 'Enterprise' ? '/contact' : '/auth/login'}
                 className={`inline-flex items-center justify-center gap-2 py-3 px-6 rounded-xl font-semibold text-sm transition-all ${plan.popular ? 'bg-dark-950 text-white hover:bg-dark-800' : 'bg-primary-400 text-dark-950 hover:bg-primary-300'}`}>
                 {plan.cta} <ArrowRight size={16} />
               </Link>

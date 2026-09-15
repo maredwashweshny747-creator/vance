@@ -34,7 +34,121 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
-## 2026-09-13 (2) — Claude (chat) — Fixed the 14-vs-12 remaining-sessions bug
+## 2026-09-15 — Claude (chat) — Added a create-admin script (needed after sign-up removal), diagnosed a stale-`.next`-cache build error
+
+**Added:**
+- **`prisma/create-admin.ts`** — since sign-up was removed entirely last
+  session, there was no way left to create the *first* admin/gym account
+  short of running the full seed script (which also creates a pile of demo
+  data). This is a standalone script that creates just one `User` (role
+  `ADMIN`) plus the `Gym` they own, in a single transaction — mirrors
+  exactly what the old `/api/auth/register` route used to do, minus the
+  public-facing form. Takes `--name`/`--email`/`--password`/`--gym`/
+  `--slug` flags, or prompts interactively for anything not passed.
+  Checks for an existing email and auto-dedupes the gym slug if it
+  collides. Added as `npm run db:create-admin`.
+
+**Also:** the build error pasted in the previous message (80 `TS2307`
+errors plus "Couldn't find any `pages` or `app` directory") was diagnosed
+as a stale `.next/` build-cache issue, not a real code problem — every one
+of those 80 errors was Next's auto-generated `.next/types/**` files still
+referencing routes from a prior build, and the actual failure
+("Couldn't find any app directory") meant `next build` couldn't locate
+`src/app` at all, most likely because of a leftover `.next/` from a
+previous build state colliding with a fresh extraction. No code changes
+were needed for that — the fix was `rm -rf .next` before rebuilding, which
+was already explained back to the user rather than logged as a code
+change here. Confirmed independently that this zip's `src/app` (82 files,
+including `page.tsx` and `layout.tsx` at the root) is intact and correctly
+packaged.
+
+**Why:** the sign-up removal in the previous session correctly closed off
+public self-registration, but left no path at all — not even a documented
+one — to bootstrap the very first admin account on a fresh database. This
+closes that gap.
+
+**Watch out for:**
+- This script has no auth/role gate of its own — it's a server-side CLI
+  script, not an API route, so anyone with shell access to the server can
+  run it. That's the same trust boundary the old seed script already
+  operated under; nothing new is being exposed that wasn't already
+  reachable by someone with server access.
+- No schema changes — no migration needed.
+
+**Verified with:** `tsc --noEmit` in the working directory AND an isolated
+re-extraction with `node_modules` symlinked in — identical result both
+places (same single pre-existing unrelated `TS2322`, zero new errors). Did
+not run the script against a live database in this sandbox (no DB access
+here) — the transaction logic (create User, then create Gym with
+`ownerId` pointing at it) mirrors the already-working `seed.ts` and the
+now-deleted `register` route exactly, so it's verified by structural
+comparison to known-working code rather than a live run.
+
+---
+
+**Changed:**
+- **Sign-up removed completely**: deleted `src/app/auth/register/page.tsx` and
+  its backend `src/app/api/auth/register/route.ts` entirely — not hidden,
+  gone. Every landing-page link that pointed to sign-up (`Hero.tsx`,
+  `Navbar.tsx` desktop + mobile menu, `Pricing.tsx`, `CTA.tsx`) now points to
+  `/auth/login` with adjusted copy ("Sign In" instead of "Start Free
+  Trial"/"Start 14-Day Free Trial"). Removed the login page's "Don't have an
+  account?" link. Cleaned up NextAuth's `pages.newUser` config entry, which
+  pointed at the now-deleted route (it was already dead — this app only uses
+  `CredentialsProvider`, no OAuth — but no reason to leave it dangling).
+- **Found and fixed a real touch-device bug, not just a cosmetic one**:
+  Edit/Delete-style action buttons on **five pages** — Settings' team list,
+  Payroll, Leads, Inventory, and Classes — were styled `opacity-0` +
+  `group-hover:opacity-100`. Touch devices have no hover state, so these
+  buttons were **completely invisible and untappable on every phone and
+  tablet** — not a rendering-too-small problem, an "this feature does not
+  exist on mobile" problem. Fixed all five to stay visibly available on
+  touch/narrow screens (`opacity-70` or `opacity-100` by default,
+  `sm:opacity-0 sm:group-hover:opacity-100` only kicking in on larger
+  pointer-capable screens where hover-to-reveal actually makes sense).
+  Left one other `opacity-0 group-hover` instance alone (a chart bar's
+  hover tooltip on the main dashboard) since that's a decorative detail
+  with no functionality lost on touch, not an unreachable action.
+- **Two responsive wrapping fixes**: the class-offers editor row (4 inputs +
+  a delete button) was one unbreakable flex line that would overflow on a
+  320–375px phone — now wraps with sensible `min-w` on the flexible inputs.
+  A coach's per-class row on the Attendance page had the same risk (class
+  name + two action buttons all on one unbreakable line) — now wraps too.
+
+**Why:** sign-up needed to go away entirely, not just be hidden from
+navigation; "fix responsive to fit all phones and tablets" turned out to
+have one very concrete, serious answer once actually audited rather than
+a vague "make things smaller" fix.
+
+**Watch out for:**
+- This was a targeted responsive audit (checked Fighters, Classes,
+  Attendance, Settings, Payroll, Leads, Inventory), not an exhaustive
+  pixel-by-pixel pass at every breakpoint on every page — the
+  `opacity-0 group-hover` pattern was searched for repo-wide and all
+  actionable instances were fixed, but there could still be other,
+  different responsive issues elsewhere that a full visual QA pass on a
+  real device would catch that a code-only audit wouldn't.
+- Item 3 (unused API calls / slow requests) got a lighter targeted check
+  this round rather than a from-scratch re-audit — several prior sessions
+  already went deep on this (dashboard N+1, leads debounce, payroll query
+  rewrite, pagination, indexes). No new dead API calls or new slow-query
+  patterns were found this round; the touch-button bug above was the
+  actual highest-value find, even though it's a UI bug rather than a
+  performance one.
+- No schema changes this round — no migration needed.
+
+**Verified with:** `tsc --noEmit` in the working directory AND an isolated
+re-extraction with `node_modules` symlinked in — identical result both
+places (same single pre-existing unrelated `TS2322`, zero new errors). No
+DB/browser/mobile-device access in this sandbox, so the touch-visibility
+fix is verified by reading exactly how Tailwind's `sm:` breakpoint and
+`group-hover` interact (confirmed: `opacity-70` applies unconditionally
+below the `sm` breakpoint, `sm:opacity-0` only overrides it at `sm` and
+up, where `group-hover` can then apply) rather than by tapping a real
+phone screen — worth a quick real-device check before considering this
+fully closed.
+
+---
 
 **Note:** sandbox reset again — restored from `vance-v19.zip` before making
 changes, so this builds on everything above with nothing lost. This closes

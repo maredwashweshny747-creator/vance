@@ -196,7 +196,7 @@ export default function LeadsPage() {
                     <td className="px-5 py-4 text-dark-400 text-sm">{lead.assignedTo || '—'}</td>
                     <td className="px-5 py-4">
                       <button onClick={e=>{e.stopPropagation();deleteLead(lead.id)}}
-                        className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-red-500/10 hover:text-red-400 text-dark-600 transition-all">
+                        className="opacity-70 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded hover:bg-red-500/10 hover:text-red-400 text-dark-600 transition-all">
                         <Trash2 size={14}/>
                       </button>
                     </td>

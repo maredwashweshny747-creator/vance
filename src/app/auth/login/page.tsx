@@ -60,7 +60,6 @@ export default function LoginPage() {
             </button>
           </form>
         </div>
-        <p className="text-center text-sm text-dark-400 mt-6">Don&apos;t have an account? <Link href="/auth/register" className="text-primary-400 hover:underline">Start free trial</Link></p>
       </motion.div>
     </div>
   )

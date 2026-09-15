@@ -158,7 +158,7 @@ export default function PayrollPage() {
                         <span className={cn('badge text-xs', run.status==='PAID'?'text-primary-400 bg-primary-400/10 border-primary-400/20':'text-yellow-400 bg-yellow-400/10 border-yellow-400/20')}>{run.status}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <div className="flex items-center gap-1 opacity-70 sm:opacity-0 sm:group-hover:opacity-100 transition-all">
                           <button onClick={()=>printPayslip(run)} title="Print payslip" className="p-1.5 rounded hover:bg-dark-600 text-dark-400 hover:text-white"><Printer size={14}/></button>
                           {run.status==='PENDING' && <button onClick={()=>markPaid(run.id)} title="Mark paid" className="p-1.5 rounded hover:bg-primary-400/10 text-dark-400 hover:text-primary-400"><Check size={14}/></button>}
                           <button onClick={()=>deleteRun(run.id)} title="Delete" className="p-1.5 rounded hover:bg-crimson-500/10 text-dark-500 hover:text-crimson-400"><Trash2 size={14}/></button>

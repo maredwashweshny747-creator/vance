@@ -231,8 +231,8 @@ export default function AttendancePage() {
                 ) : (
                   <div className="space-y-1.5">
                     {c.todaysClasses.map(cls => (
-                      <div key={cls.id} className="flex items-center justify-between gap-2 text-xs">
-                        <span className="text-dark-300 truncate flex-1">{cls.name}</span>
+                      <div key={cls.id} className="flex items-center justify-between gap-2 text-xs flex-wrap">
+                        <span className="text-dark-300 truncate flex-1 min-w-[80px]">{cls.name}</span>
                         {cls.checkedIn ? (
                           <CheckCircle2 size={14} className="text-primary-400 flex-shrink-0"/>
                         ) : cls.coveredBy ? (

@@ -59,11 +59,8 @@ export function Navbar() {
 
           {/* CTA */}
           <div className="hidden md:flex items-center gap-3">
-            <Link href="/auth/login" className="text-sm text-dark-200 hover:text-white transition-colors px-4 py-2">
+            <Link href="/auth/login" className="btn-primary text-sm">
               Sign In
-            </Link>
-            <Link href="/auth/register" className="btn-primary text-sm">
-              Start Free Trial
             </Link>
           </div>
 
@@ -98,11 +95,8 @@ export function Navbar() {
                 </a>
               ))}
               <div className="pt-2 border-t border-dark-700 flex flex-col gap-2">
-                <Link href="/auth/login" className="px-4 py-3 text-dark-200 hover:text-white hover:bg-white/5 rounded-xl transition-colors">
+                <Link href="/auth/login" className="btn-primary justify-center">
                   Sign In
-                </Link>
-                <Link href="/auth/register" className="btn-primary justify-center">
-                  Start Free Trial
                 </Link>
               </div>
             </div>

@@ -202,7 +202,7 @@ export default function ClassesPage() {
             <motion.div key={cls.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
               className="card-hover group relative" style={{ borderLeftColor: cls.color || '#ffc700', borderLeftWidth: 3 }}>
               <div onClick={() => openEdit(cls)} className="cursor-pointer">
-                <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                <div className="absolute top-3 right-3 flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all">
                   <span className="p-1.5 rounded-lg text-dark-500"><Pencil size={13}/></span>
                   <button
                     onClick={(e) => { e.stopPropagation(); setDeleteTarget(cls) }}
@@ -382,7 +382,7 @@ export default function ClassesPage() {
                     <label className="label">Promotional Offers ({form.type === 'PRIVATE' ? 'session packages' : 'multi-month packages'})</label>
                     <div className="space-y-2">
                       {form.offers.map((o, i) => (
-                        <div key={i} className="flex items-center gap-2">
+                        <div key={i} className="flex flex-wrap items-center gap-2">
                           {form.type === 'PRIVATE' ? (
                             <>
                               <input type="number" min={1} value={o.sessions} placeholder="Sessions"
@@ -400,10 +400,10 @@ export default function ClassesPage() {
                           )}
                           <input type="number" min={0} step={0.01} value={o.price} placeholder="Price"
                             onChange={e => setForm(f => ({ ...f, offers: f.offers.map((x,j) => j===i ? {...x, price:+e.target.value} : x) }))}
-                            className="input flex-1" />
+                            className="input flex-1 min-w-[90px]" />
                           <input value={o.label} placeholder="Label (optional)"
                             onChange={e => setForm(f => ({ ...f, offers: f.offers.map((x,j) => j===i ? {...x, label:e.target.value} : x) }))}
-                            className="input flex-1" />
+                            className="input flex-1 min-w-[110px]" />
                           <button type="button" onClick={() => setForm(f => ({ ...f, offers: f.offers.filter((_,j) => j!==i) }))}
                             className="p-2 rounded-lg text-dark-500 hover:text-crimson-400"><Trash2 size={14}/></button>
                         </div>

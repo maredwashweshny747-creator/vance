@@ -86,8 +86,8 @@ export function Hero() {
           transition={{ duration: 0.6, delay: 0.4 }}
           className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16"
         >
-          <Link href="/auth/register" className="btn-primary text-base px-8 py-4 group">
-            Start 14-Day Free Trial
+          <Link href="/auth/login" className="btn-primary text-base px-8 py-4 group">
+            Sign In
             <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
           </Link>
           <a href="#dashboard-preview" className="btn-ghost text-base px-8 py-4 group">

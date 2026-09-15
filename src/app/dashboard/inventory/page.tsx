@@ -154,7 +154,7 @@ export default function InventoryPage() {
                       </td>
                       <td className="px-5 py-4"><span className={cn('text-sm font-semibold', margin>40?'text-primary-400':margin>20?'text-yellow-400':'text-red-400')}>{margin}%</span></td>
                       <td className="px-5 py-4">
-                        <button onClick={()=>deleteItem(item.id)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-red-500/10 hover:text-red-400 text-dark-600 transition-all"><Trash2 size={14}/></button>
+                        <button onClick={()=>deleteItem(item.id)} className="opacity-70 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded hover:bg-red-500/10 hover:text-red-400 text-dark-600 transition-all"><Trash2 size={14}/></button>
                       </td>
                     </tr>
                   )

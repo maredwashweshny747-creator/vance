@@ -187,13 +187,13 @@ export default function SettingsPage() {
               {team.map(s => {
                 const isCoachAcct = s.role === 'COACH'
                 return (
-                  <div key={s.id} className="card-hover flex items-center gap-4 group">
+                  <div key={s.id} className="card-hover flex items-center gap-3 sm:gap-4 flex-wrap group">
                     <div className={cn('w-10 h-10 rounded-full flex items-center justify-center font-bold flex-shrink-0 border',
                       isCoachAcct ? 'bg-crimson-400/10 border-crimson-400/20 text-crimson-400' : 'bg-blue-400/10 border-blue-400/20 text-blue-400')}>
                       {isCoachAcct ? <Swords size={16}/> : getInitials(s.name)}
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                    <div className="flex-1 min-w-[140px]">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-white font-medium text-sm">{s.name}</span>
                         <span className={cn('text-xs px-2 py-0.5 rounded-full border', isCoachAcct ? 'bg-crimson-400/10 text-crimson-400 border-crimson-400/20' : 'bg-blue-400/10 text-blue-400 border-blue-400/20')}>
                           {isCoachAcct ? 'Coach' : 'Receptionist'}
@@ -202,15 +202,15 @@ export default function SettingsPage() {
                       </div>
                       <div className="text-dark-400 text-xs">{s.email}</div>
                     </div>
-                    <div className="text-dark-600 text-xs flex-shrink-0">
+                    <div className="text-dark-600 text-xs flex-shrink-0 hidden md:block">
                       Added {new Date(s.createdAt).toLocaleDateString()}
                     </div>
                     <button onClick={() => openEditTeamMember(s)}
-                      className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-primary-400/10 hover:text-primary-400 text-dark-600 transition-all flex-shrink-0">
+                      className="opacity-70 sm:opacity-0 sm:group-hover:opacity-100 p-2 rounded-lg hover:bg-primary-400/10 hover:text-primary-400 text-dark-600 transition-all flex-shrink-0">
                       <Pencil size={14}/>
                     </button>
                     <button onClick={() => removeTeamMember(s.id, s.name)}
-                      className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-crimson-500/10 hover:text-crimson-400 text-dark-600 transition-all flex-shrink-0">
+                      className="opacity-70 sm:opacity-0 sm:group-hover:opacity-100 p-2 rounded-lg hover:bg-crimson-500/10 hover:text-crimson-400 text-dark-600 transition-all flex-shrink-0">
                       <Trash2 size={14}/>
                     </button>
                   </div>
