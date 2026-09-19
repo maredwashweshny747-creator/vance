@@ -24,6 +24,26 @@ export default function ImportExportPage() {
   const [dragOver, setDragOver]     = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [showErrors, setShowErrors] = useState(false)
+  const [restoring, setRestoring] = useState(false)
+
+  async function runRestore(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-selecting the same file next time
+    if (!file) return
+    if (!confirm('This creates a brand-new gym with everything from this backup file. Continue?')) return
+    setRestoring(true)
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+      const res = await fetch('/api/import-export/full-backup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+      const d = await res.json().catch(() => ({}))
+      if (res.ok) toast.success(`Restored "${d.gymName}" — this is now your gym. Reload the dashboard to see it.`)
+      else toast.error(d.error || 'Restore failed')
+    } catch {
+      toast.error('Could not read that backup file')
+    }
+    setRestoring(false)
+  }
 
   function downloadExport(type: string) {
     setExporting(type)
@@ -71,6 +91,22 @@ export default function ImportExportPage() {
       <div>
         <h1 className="font-display text-4xl tracking-wider text-white">IMPORT & EXPORT</h1>
         <p className="text-dark-300 text-sm mt-1">Bulk import members from CSV or export all your data anytime</p>
+      </div>
+
+      {/* Full account backup — everything, not just fighters */}
+      <div className="bg-dark-800 border border-dark-700 rounded-2xl p-5 space-y-4">
+        <div>
+          <h2 className="font-semibold text-white text-lg flex items-center gap-2"><FileDown size={18} className="text-primary-400"/> Full Account Backup</h2>
+          <p className="text-dark-400 text-xs mt-1">Everything — fighters, classes, coaches, payments, branches, payroll, shop, leads. Restoring creates a brand-new gym with all of it, owned by whichever admin account restores it.</p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3">
+          <a href="/api/import-export/full-backup" download
+            className="btn-primary flex-1 justify-center"><Download size={15}/> Download Full Backup</a>
+          <label className="btn-ghost flex-1 justify-center cursor-pointer">
+            <Upload size={15}/> {restoring ? 'Restoring…' : 'Restore from Backup'}
+            <input type="file" accept="application/json" className="hidden" disabled={restoring} onChange={runRestore} />
+          </label>
+        </div>
       </div>
 
       {/* Import section */}

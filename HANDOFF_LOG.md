@@ -34,7 +34,158 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
-## 2026-09-15 — Claude (chat) — Added a create-admin script (needed after sign-up removal), diagnosed a stale-`.next`-cache build error
+## 2026-09-18 (2) — Claude (chat) — Fixed: an Excused session had no way back to Absent (found the real bug)
+
+**Root cause found:** the Attend and Excuse buttons in the fighter's
+Remaining Sessions modal were both built to hide themselves once a
+session's status was `EXCUSED` (`canAttend`/`canExcuse` both excluded
+`ATTENDED` *and* `EXCUSED`). So once a session got excused, **neither
+button showed at all** — there was no way to change it to anything else.
+The backend upsert itself was already correct (verified: changing
+`ABSENT` → `ATTENDED`/`EXCUSED` via the existing buttons did work and did
+correctly update the stored row) — the bug was purely that the UI removed
+your only two controls the moment a session reached the one state
+(`EXCUSED`) that most needed a way back out.
+
+**Fixed:** replaced the two separate hide/show conditions with a proper
+3-way toggle. Every session now shows exactly the two actions that don't
+match its current status — an `ATTENDED` session shows Excuse + Absent, an
+`EXCUSED` session shows Attend + Absent, an `ABSENT`/`MISSED`/`UPCOMING`
+session shows Attend + Excuse. So any status is now correctable to either
+of the other two, including the specific case reported: an excused
+session can now be marked Absent. Consolidated the three near-duplicate
+handlers (`markAttend`/`markExcuse`/a-bare-upsert) into one `markStatus()`
+function so all three actions share identical request/refresh/error-
+handling logic — Attend keeps its two-click confirm, Excuse and Absent
+stay single-click as before.
+
+**Why:** direct fix for the reported issue, verified by re-reading the
+exact condition that was hiding the buttons rather than assuming and
+rewriting from scratch.
+
+**Watch out for — a real limitation, not new, but now directly reachable
+by this fix:** marking a session `EXCUSED` pushes the enrollment's
+`endDate` out by one real scheduled occurrence (so the fighter doesn't
+lose the session). Correcting that same session back to `ABSENT` (now
+possible thanks to this fix) does **not** shrink `endDate` back — this was
+already a known, previously-flagged gap, but it's now something someone
+could actually trigger through the UI where before they couldn't reach
+the reversal at all. Net effect: excuse-then-un-excuse leaves one "bonus"
+extra session at the end of the fighter's cycle. Worth fixing in a future
+session if this comes up in practice — it would mean tracking whether the
+current `endDate` extension is still "owed" to a still-excused session
+before deciding whether to pull it back on reversal.
+
+**Verified with:** `tsc --noEmit` in the working directory AND an isolated
+re-extraction with `node_modules` symlinked in — identical result both
+places (same single pre-existing unrelated `TS2322`, zero new errors),
+plus a brace-balance check on the edited file. No DB/browser access in
+this sandbox — verified by re-reading the exact button visibility
+conditions and the backend upsert logic line by line, not by clicking
+through the live app.
+
+---
+
+**Fixes:**
+- **Deleted coaches kept appearing in the assign-coach dropdown**: found it —
+  deleting the staff account only deleted the `User` row; `Coach.userId` is
+  `onDelete: SetNull`, so the `Coach` record itself (with `isActive: true`)
+  was left behind untouched, and every dropdown filters on `isActive`, not
+  on whether a user is still linked. `staff-accounts` DELETE now also sets
+  `Coach.isActive = false`. Payroll/attendance history is deliberately
+  preserved, not deleted.
+- **A coach could see every other coach's attendance**: `GET
+  /api/coach-attendance` (no `classId`) had no role restriction at all — a
+  coach's own dashboard fetched the *entire* roster and just filtered to
+  their own row client-side, meaning the full data was already on the wire
+  and directly callable. Now restricted server-side: a `COACH`-role caller
+  only ever gets their own row; admins/receptionists still get everyone
+  (needed for the cover-coach picker, which only they can act on anyway).
+- **Add Lead form kept old data after reopening**: `addLead` never reset
+  `form` state after a successful submit, and the Cancel/X buttons didn't
+  reset it either — so the next "Add Lead" open (even after navigating
+  away) showed the previous lead's fields still filled in. Fixed to clear
+  on success, Cancel, and the X button.
+
+**Additions:**
+- **Full account backup/restore** — new `GET/POST /api/import-export/full-backup`
+  and a section on the Import & Export page. Export downloads one JSON file
+  with everything: fighters (+enrollments, attendance, feedback), coaches
+  (+attendance, payroll, workout plans), classes (+offers), payments,
+  branches, leads (+interactions), inventory + shop sales, announcements,
+  staff + staff payroll. Restore creates a **brand-new gym** owned by the
+  restoring admin with everything re-created and every relationship
+  correctly re-pointed via an old-ID→new-ID map built as each table is
+  inserted (parents before children, in one transaction). Refuses to run if
+  that admin already owns a gym (restore can't merge into an existing one).
+  User accounts/logins are intentionally not part of the backup — only the
+  gym's operational data.
+- **Branch sports are now free text**: replaced the fixed checkbox list of
+  disciplines with a type-and-add tag input, so any sport name works, not
+  just the built-in categories.
+- **Staff/coach phone + per-account delete permission**: `User.phone`
+  added (coaches already had one on the `Coach` model); both create and
+  edit forms in Settings now have a phone field. New `User.canDelete`
+  (default `true`) with a checkbox in both forms — when unchecked, that
+  receptionist/coach account gets a 403 on every delete action. Enforced
+  via a new `canDelete()` helper (checked fresh from the DB on each
+  request, not cached in the session, so revoking it takes effect
+  immediately) wired into the members, class-enrollments, classes, leads,
+  inventory, and fighter-feedback DELETE endpoints. Admins are always
+  exempt. **Not yet wired into**: payroll and branches DELETE (both are
+  already admin-only, so lower priority) and staff-accounts DELETE itself
+  (also already admin-only).
+- **Stock items are now editable**: Inventory never had an edit capability
+  at all — only Add and Delete — even though the backend `PATCH` handler
+  already existed and worked. Added an Edit button that reuses the Add
+  Item form/modal in edit mode.
+- **Attend button in the fighter's Remaining Sessions view, two-click
+  confirmed**: next to the existing Excuse button, an Attend button now
+  appears on any non-attended/non-excused session. First tap arms it
+  ("Tap again to confirm"), second tap actually records the ATTENDED mark
+  — never a single accidental tap. Uses the same `/api/class-attendance`
+  endpoint the Manage Attendance page already uses.
+
+**Why:** five real bugs (one of them, the coach-attendance privacy leak,
+a genuine access-control gap) plus five requested features — a real
+backup/restore since the CSV exporter only ever covered fighters/payments/
+leads, free-text branch sports instead of a fixed list, contact info and
+a real per-account permission system for staff, the ability to fix a typo
+in a stock item without deleting and recreating it, and a safer confirm
+flow for marking attendance from the fighter's own page.
+
+**Watch out for:**
+- New schema fields this round: `User.phone`, `User.canDelete`. Migration
+  required.
+- The full-backup restore was built and cross-checked field-by-field
+  against `schema.prisma` (I found and fixed several field-name mismatches
+  during that check — e.g. `InventoryItem.sellPrice` not `salePrice`,
+  `LeadInteraction.note` not `notes`, `Announcement.content` not
+  `message`, and `WorkoutPlan` needing both `gymId` and a required
+  `memberId` I'd initially missed) — but it has **not been run against a
+  live database**, since there's none in this sandbox. This is the
+  highest-risk change in this batch precisely because it touches ~20
+  tables in one transaction; strongly recommend testing an export→restore
+  round-trip against a staging database before relying on it for anything
+  real.
+- `canDelete` enforcement covers the 6 delete endpoints reachable by
+  non-admin roles in normal use, not literally every delete action in the
+  codebase — flagged explicitly above rather than claimed as exhaustive.
+- Did not do another mobile-responsiveness pass this round — the reported
+  additions/fixes were the priority given the session's scope; the
+  touch-button and wrapping fixes from two sessions ago still stand, but
+  "isn't usable on mobile" as a general complaint wasn't re-audited from
+  scratch here.
+
+**Verified with:** `tsc --noEmit` in the working directory AND an isolated
+re-extraction with `node_modules` symlinked in — identical result both
+places (same single pre-existing unrelated `TS2322`, zero new errors) —
+plus a brace-balance check on every heavily-edited file. No DB/browser
+access in this sandbox, so the backup/restore transaction logic, the
+coach-attendance role restriction, and the two-click attend flow are all
+verified by code inspection and schema cross-referencing, not a live run.
+
+---
 
 **Added:**
 - **`prisma/create-admin.ts`** — since sign-up was removed entirely last

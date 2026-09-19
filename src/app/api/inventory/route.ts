@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { getSessionAndGym } from '@/lib/getGym'
+import { getSessionAndGym, canDelete } from '@/lib/getGym'
 
 export async function GET(req: NextRequest) {
   const result = await getSessionAndGym()
@@ -101,6 +101,7 @@ export async function PATCH(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const result = await getSessionAndGym()
   if ('error' in result) return result.error
+  if (!(await canDelete(result.session))) return NextResponse.json({ error: 'You do not have permission to delete' }, { status: 403 })
   const { gym } = result
   const id = new URL(req.url).searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })

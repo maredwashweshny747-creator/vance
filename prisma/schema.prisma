@@ -16,6 +16,8 @@ model User {
   password      String?
   image         String?
   role          String    @default("ADMIN") // ADMIN, RECEPTIONIST, COACH
+  phone         String?   // receptionist contact number (coaches use Coach.phone instead)
+  canDelete     Boolean   @default(true) // RECEPTIONIST/COACH only — admin can revoke delete access per account
   staffGymId    String?   // for RECEPTIONIST/COACH: which gym they belong to
   emailVerified DateTime?
   createdAt     DateTime  @default(now())

@@ -49,6 +49,20 @@ export function isReceptionist(session: any) {
 }
 
 /**
+ * Whether the current session's user is allowed to delete things. Admins always can.
+ * Receptionists/coaches can have delete access individually revoked by the admin
+ * (User.canDelete) — checked fresh against the DB rather than cached in the session,
+ * so a revoked permission takes effect immediately rather than waiting for re-login.
+ */
+export async function canDelete(session: any): Promise<boolean> {
+  const sessionUser = session?.user as any
+  if (!sessionUser) return false
+  if (sessionUser.role === 'ADMIN') return true
+  const user = await prisma.user.findUnique({ where: { id: sessionUser.id }, select: { canDelete: true } })
+  return user?.canDelete ?? true
+}
+
+/**
  * For a COACH-role session, returns their own Coach profile (or null).
  * Used to scope classes/payroll/etc to "my own" records.
  */

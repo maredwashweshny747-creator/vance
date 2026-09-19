@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Package, Plus, ShoppingCart, AlertTriangle, DollarSign, TrendingUp, Search, X, Trash2, Minus } from 'lucide-react'
+import { Package, Plus, ShoppingCart, AlertTriangle, DollarSign, TrendingUp, Search, X, Trash2, Minus, Pencil } from 'lucide-react'
 import { cn, formatCurrency } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
@@ -23,6 +23,13 @@ export default function InventoryPage() {
   const [cart, setCart] = useState<{item:Item; qty:number}[]>([])
   const [payMethod, setPayMethod] = useState<'CASH'|'CARD'>('CASH')
   const [form, setForm] = useState({ name:'', sku:'', category:'SUPPLEMENT', costPrice:0, sellPrice:0, stock:0, lowStockAt:5, description:'' })
+  const [editTarget, setEditTarget] = useState<Item | null>(null)
+
+  function openEdit(item: Item) {
+    setEditTarget(item)
+    setForm({ name: item.name, sku: item.sku || '', category: item.category, costPrice: item.costPrice, sellPrice: item.sellPrice, stock: item.stock, lowStockAt: item.lowStockAt, description: item.description || '' })
+    setShowForm(true)
+  }
 
   function load() {
     setLoading(true)
@@ -38,8 +45,10 @@ export default function InventoryPage() {
 
   async function addItem(e:React.FormEvent) {
     e.preventDefault()
-    const res = await fetch('/api/inventory', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(form) })
-    if(res.ok){ toast.success('Item added!'); setShowForm(false); load() } else { toast.error('Failed') }
+    const res = editTarget
+      ? await fetch(`/api/inventory?id=${editTarget.id}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(form) })
+      : await fetch('/api/inventory', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(form) })
+    if(res.ok){ toast.success(editTarget ? 'Item updated!' : 'Item added!'); setShowForm(false); setEditTarget(null); load() } else { toast.error('Failed') }
   }
 
   async function checkout() {
@@ -82,7 +91,7 @@ export default function InventoryPage() {
           <h1 className="font-display text-4xl tracking-wider text-white">STORE & INVENTORY</h1>
           <p className="text-dark-300 text-sm mt-1">Supplements, drinks, merchandise — sell and track everything</p>
         </div>
-        <button onClick={()=>setShowForm(true)} className="btn-primary"><Plus size={16}/> Add Item</button>
+        <button onClick={()=>{setEditTarget(null); setForm({ name:'', sku:'', category:'SUPPLEMENT', costPrice:0, sellPrice:0, stock:0, lowStockAt:5, description:'' }); setShowForm(true)}} className="btn-primary"><Plus size={16}/> Add Item</button>
       </div>
 
       {/* Stats */}
@@ -154,7 +163,10 @@ export default function InventoryPage() {
                       </td>
                       <td className="px-5 py-4"><span className={cn('text-sm font-semibold', margin>40?'text-primary-400':margin>20?'text-yellow-400':'text-red-400')}>{margin}%</span></td>
                       <td className="px-5 py-4">
-                        <button onClick={()=>deleteItem(item.id)} className="opacity-70 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded hover:bg-red-500/10 hover:text-red-400 text-dark-600 transition-all"><Trash2 size={14}/></button>
+                        <div className="flex items-center gap-1">
+                          <button onClick={()=>openEdit(item)} className="opacity-70 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded hover:bg-primary-400/10 hover:text-primary-400 text-dark-600 transition-all"><Pencil size={14}/></button>
+                          <button onClick={()=>deleteItem(item.id)} className="opacity-70 sm:opacity-0 sm:group-hover:opacity-100 p-1.5 rounded hover:bg-red-500/10 hover:text-red-400 text-dark-600 transition-all"><Trash2 size={14}/></button>
+                        </div>
                       </td>
                     </tr>
                   )
@@ -260,8 +272,8 @@ export default function InventoryPage() {
             <motion.div initial={{scale:0.95,opacity:0}} animate={{scale:1,opacity:1}} exit={{scale:0.95,opacity:0}}
               className="bg-dark-800 border border-dark-600 rounded-2xl p-8 w-full max-w-md max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-6">
-                <h2 className="font-display text-2xl tracking-wider text-white">ADD ITEM</h2>
-                <button onClick={()=>setShowForm(false)} className="p-2 rounded-lg hover:bg-dark-700 text-dark-400"><X size={18}/></button>
+                <h2 className="font-display text-2xl tracking-wider text-white">{editTarget ? 'EDIT ITEM' : 'ADD ITEM'}</h2>
+                <button onClick={()=>{setShowForm(false); setEditTarget(null)}} className="p-2 rounded-lg hover:bg-dark-700 text-dark-400"><X size={18}/></button>
               </div>
               <form onSubmit={addItem} className="space-y-4">
                 <div><label className="label">Product Name</label><input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} required className="input" placeholder="e.g. Whey Protein 1kg"/></div>
@@ -283,8 +295,8 @@ export default function InventoryPage() {
                 </div>
                 {form.costPrice>0&&form.sellPrice>0&&<div className="bg-dark-700 rounded-xl p-3 text-center"><span className="text-dark-400 text-sm">Profit Margin: </span><span className={cn('font-bold text-sm',((form.sellPrice-form.costPrice)/form.sellPrice)*100>40?'text-primary-400':'text-yellow-400')}>{Math.round(((form.sellPrice-form.costPrice)/form.sellPrice)*100)}%</span></div>}
                 <div className="flex gap-3 pt-2">
-                  <button type="button" onClick={()=>setShowForm(false)} className="btn-ghost flex-1 justify-center">Cancel</button>
-                  <button type="submit" className="btn-primary flex-1 justify-center">Add Item</button>
+                  <button type="button" onClick={()=>{setShowForm(false); setEditTarget(null)}} className="btn-ghost flex-1 justify-center">Cancel</button>
+                  <button type="submit" className="btn-primary flex-1 justify-center">{editTarget ? 'Save Changes' : 'Add Item'}</button>
                 </div>
               </form>
             </motion.div>

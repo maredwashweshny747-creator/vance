@@ -11,7 +11,7 @@ export async function GET() {
   const { gym } = result
   const accounts = await prisma.user.findMany({
     where: { staffGymId: gym.id, role: { in: ['RECEPTIONIST', 'COACH'] } },
-    select: { id: true, name: true, email: true, role: true, createdAt: true, coach: true },
+    select: { id: true, name: true, email: true, role: true, phone: true, canDelete: true, createdAt: true, coach: true },
     orderBy: { createdAt: 'desc' },
   })
   return NextResponse.json(accounts)
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   if ('error' in result) return result.error
   if (!isAdmin(result.session)) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
   const { gym } = result
-  const { name, email, password, role, sessionRate, privateSessionRate, specialties } = await req.json()
+  const { name, email, password, role, phone, canDelete: canDeleteFlag, sessionRate, privateSessionRate, specialties } = await req.json()
   if (!name || !email || !password) return NextResponse.json({ error: 'All fields required' }, { status: 400 })
   if (password.length < 8) return NextResponse.json({ error: 'Password must be 8+ characters' }, { status: 400 })
   const accountRole = role === 'COACH' ? 'COACH' : 'RECEPTIONIST'
@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
   const exists = await prisma.user.findUnique({ where: { email: cleanEmail } })
   if (exists) return NextResponse.json({ error: 'Email already in use' }, { status: 409 })
   const hashed = await bcrypt.hash(password, 12)
+  const canDeleteValue = canDeleteFlag !== undefined ? !!canDeleteFlag : true
 
   try {
     if (accountRole === 'COACH') {
@@ -38,11 +39,11 @@ export async function POST(req: NextRequest) {
       const lastName = rest.join(' ') || firstName
       const { user, coach } = await prisma.$transaction(async tx => {
         const user = await tx.user.create({
-          data: { name, email: cleanEmail, password: hashed, role: 'COACH', staffGymId: gym.id },
+          data: { name, email: cleanEmail, password: hashed, role: 'COACH', staffGymId: gym.id, canDelete: canDeleteValue },
         })
         const coach = await tx.coach.create({
           data: {
-            gymId: gym.id, userId: user.id, firstName, lastName, email: cleanEmail,
+            gymId: gym.id, userId: user.id, firstName, lastName, email: cleanEmail, phone: phone || null,
             sessionRate: Number(sessionRate) || 0,
             privateSessionRate: Number(privateSessionRate) || 0,
             specialties: specialties || null,
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
     }
 
     const account = await prisma.user.create({
-      data: { name, email: cleanEmail, password: hashed, role: 'RECEPTIONIST', staffGymId: gym.id },
+      data: { name, email: cleanEmail, password: hashed, role: 'RECEPTIONIST', staffGymId: gym.id, phone: phone || null, canDelete: canDeleteValue },
     })
     return NextResponse.json({ id: account.id, name: account.name, email: account.email, role: account.role })
   } catch (err: any) {
@@ -78,6 +79,8 @@ export async function PATCH(req: NextRequest) {
   const body = await req.json()
   const userUpdate: any = {}
   if (body.name !== undefined) userUpdate.name = body.name
+  if (body.canDelete !== undefined) userUpdate.canDelete = !!body.canDelete
+  if (account.role === 'RECEPTIONIST' && body.phone !== undefined) userUpdate.phone = body.phone || null
   if (Object.keys(userUpdate).length > 0) await prisma.user.update({ where: { id }, data: userUpdate })
 
   if (account.role === 'COACH' && account.coach) {
@@ -87,6 +90,7 @@ export async function PATCH(req: NextRequest) {
       coachUpdate.firstName = firstName
       coachUpdate.lastName = rest.join(' ') || firstName
     }
+    if (body.phone !== undefined) coachUpdate.phone = body.phone || null
     if (body.sessionRate !== undefined) coachUpdate.sessionRate = Number(body.sessionRate) || 0
     if (body.privateSessionRate !== undefined) coachUpdate.privateSessionRate = Number(body.privateSessionRate) || 0
     if (body.specialties !== undefined) coachUpdate.specialties = body.specialties || null
@@ -104,8 +108,16 @@ export async function DELETE(req: NextRequest) {
   const id = new URL(req.url).searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
   // Ensure the account belongs to this gym
-  const account = await prisma.user.findFirst({ where: { id, staffGymId: gym.id, role: { in: ['RECEPTIONIST', 'COACH'] } } })
+  const account = await prisma.user.findFirst({ where: { id, staffGymId: gym.id, role: { in: ['RECEPTIONIST', 'COACH'] } }, include: { coach: true } })
   if (!account) return NextResponse.json({ error: 'Account not found' }, { status: 404 })
+  // Deleting the User only nulls Coach.userId (the FK is onDelete: SetNull) — the Coach
+  // row itself, and its isActive flag, are untouched by that. Without explicitly
+  // deactivating it here, a "deleted" coach kept showing up in every assign-coach
+  // dropdown (those filter on isActive, not on whether a linked user still exists).
+  // Payroll/attendance history is deliberately preserved, not deleted.
+  if (account.coach) {
+    await prisma.coach.update({ where: { id: account.coach.id }, data: { isActive: false } })
+  }
   await prisma.user.delete({ where: { id } })
   return NextResponse.json({ success: true })
 }

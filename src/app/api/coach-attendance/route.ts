@@ -25,7 +25,7 @@ function isScheduledToday(cls: { daysOfWeek: string[]; isOneTime: boolean; sessi
 export async function GET(req: NextRequest) {
   const result = await getSessionAndGym()
   if ('error' in result) return result.error
-  const { gym } = result
+  const { gym, user } = result
   const classId = new URL(req.url).searchParams.get('classId')
 
   if (classId) {
@@ -52,8 +52,13 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  // Overview: every active coach, their classes scheduled today, and monthly totals across all their classes
-  const coaches = await prisma.coach.findMany({ where: { gymId: gym.id, isActive: true }, include: { classes: { where: { status: 'APPROVED' } } }, orderBy: { firstName: 'asc' } })
+  // Overview: every active coach, their classes scheduled today, and monthly totals across all their classes.
+  // A coach calling this only ever gets their OWN row — the full roster (needed for the
+  // admin/receptionist-only cover-coach picker) is never sent to a COACH-role caller.
+  const coaches = await prisma.coach.findMany({
+    where: { gymId: gym.id, isActive: true, ...(user.role === 'COACH' ? { userId: user.id } : {}) },
+    include: { classes: { where: { status: 'APPROVED' } } }, orderBy: { firstName: 'asc' },
+  })
   const monthStart = new Date(new Date().getFullYear(), new Date().getMonth(), 1)
   const today = startOfDay(new Date())
 

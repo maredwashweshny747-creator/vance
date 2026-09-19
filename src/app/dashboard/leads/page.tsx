@@ -56,10 +56,11 @@ export default function LeadsPage() {
   useEffect(()=>{ setPage(1) },[search, filterStatus, view]) // filters/search/view switch always jump back to page 1
   useEffect(()=>{ const t = setTimeout(load, 300); return () => clearTimeout(t) },[search]) // eslint-disable-line react-hooks/exhaustive-deps
 
+  const blankLeadForm = { firstName:'', lastName:'', email:'', phone:'', source:'WALK_IN', status:'NEW', assignedTo:'', notes:'', followUpAt:'' }
   async function addLead(e:React.FormEvent) {
     e.preventDefault()
     const res = await fetch('/api/leads', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(form) })
-    if(res.ok){ toast.success('Lead added!'); setShowForm(false); load() }
+    if(res.ok){ toast.success('Lead added!'); setShowForm(false); setForm(blankLeadForm); load() }
     else { const d = await res.json().catch(()=>({})); toast.error(d.error || 'Failed to add lead') }
   }
 
@@ -218,7 +219,7 @@ export default function LeadsPage() {
               className="bg-dark-800 border border-dark-600 rounded-2xl p-8 w-full max-w-lg max-h-[90vh] overflow-y-auto">
               <div className="flex items-center justify-between mb-6">
                 <h2 className="font-display text-2xl tracking-wider text-white">ADD LEAD</h2>
-                <button onClick={()=>setShowForm(false)} className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white"><X size={18}/></button>
+                <button onClick={()=>{setShowForm(false); setForm(blankLeadForm)}} className="p-2 rounded-lg hover:bg-dark-700 text-dark-400 hover:text-white"><X size={18}/></button>
               </div>
               <form onSubmit={addLead} className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
@@ -240,7 +241,7 @@ export default function LeadsPage() {
                 <div><label className="label">Follow-up Date</label><input type="datetime-local" value={form.followUpAt} onChange={e=>setForm(f=>({...f,followUpAt:e.target.value}))} className="input"/></div>
                 <div><label className="label">Notes</label><textarea value={form.notes} onChange={e=>setForm(f=>({...f,notes:e.target.value}))} className="input h-16 resize-none" placeholder="Any details about this lead..."/></div>
                 <div className="flex gap-3 pt-2">
-                  <button type="button" onClick={()=>setShowForm(false)} className="btn-ghost flex-1 justify-center">Cancel</button>
+                  <button type="button" onClick={()=>{setShowForm(false); setForm(blankLeadForm)}} className="btn-ghost flex-1 justify-center">Cancel</button>
                   <button type="submit" className="btn-primary flex-1 justify-center">Add Lead</button>
                 </div>
               </form>

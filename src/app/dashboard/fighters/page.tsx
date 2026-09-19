@@ -272,29 +272,42 @@ export default function FightersPage() {
   const [sessionsModal, setSessionsModal] = useState<any>(null)
   const [sessionsLoading, setSessionsLoading] = useState(false)
   const [sessionsModalEnrollmentId, setSessionsModalEnrollmentId] = useState<string | null>(null)
-  const [excusingDate, setExcusingDate] = useState<string | null>(null)
 
   async function openSessionsModal(enrollmentId: string) {
     setSessionsModal({ loading: true })
     setSessionsModalEnrollmentId(enrollmentId)
     setSessionsLoading(true)
+    setPendingAttendDate(null)
     const res = await fetch(`/api/class-enrollments?id=${enrollmentId}`)
     setSessionsLoading(false)
     if (res.ok) setSessionsModal(await res.json())
     else { setSessionsModal(null); toast.error('Failed to load sessions') }
   }
 
-  async function markExcuse(dateIso: string) {
+  const [pendingAttendDate, setPendingAttendDate] = useState<string | null>(null)
+  const [markingDate, setMarkingDate] = useState<{ date: string; status: string } | null>(null)
+
+  async function markStatus(dateOnly: string, status: 'ATTENDED' | 'EXCUSED' | 'ABSENT') {
     if (!sessionsModalEnrollmentId) return
-    const dateOnly = dateIso.slice(0, 10)
-    setExcusingDate(dateOnly)
+    setMarkingDate({ date: dateOnly, status })
     const res = await fetch('/api/class-attendance', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ enrollmentId: sessionsModalEnrollmentId, date: dateOnly, status: 'EXCUSED' }),
+      body: JSON.stringify({ enrollmentId: sessionsModalEnrollmentId, date: dateOnly, status }),
     })
-    setExcusingDate(null)
-    if (res.ok) { toast.success('Session excused'); openSessionsModal(sessionsModalEnrollmentId); refreshSelected(); loadList() }
-    else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to excuse session') }
+    setMarkingDate(null)
+    if (res.ok) {
+      toast.success(status === 'ATTENDED' ? 'Marked attended' : status === 'EXCUSED' ? 'Session excused' : 'Marked absent')
+      await openSessionsModal(sessionsModalEnrollmentId)
+      refreshSelected(); loadList()
+    } else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to update this session') }
+  }
+
+  function clickAttend(dateKey: string) {
+    // Requires two clicks: the first just arms confirmation, the second (on the same
+    // date, within the window) actually records it — never a single accidental tap.
+    if (pendingAttendDate !== dateKey) { setPendingAttendDate(dateKey); return }
+    setPendingAttendDate(null)
+    markStatus(dateKey, 'ATTENDED')
   }
   const [whatsappTemplate, setWhatsappTemplate] = useState('')
   const [editingFighter, setEditingFighter] = useState(false)
@@ -926,17 +939,35 @@ export default function FightersPage() {
                       : s.status === 'EXCUSED' ? 'text-blue-400 bg-blue-400/10 border-blue-400/20'
                       : s.status === 'UPCOMING' ? 'text-dark-400 bg-dark-700 border-dark-600'
                       : 'text-crimson-400 bg-crimson-400/10 border-crimson-400/20' // ABSENT or MISSED
-                    const canExcuse = s.status !== 'ATTENDED' && s.status !== 'EXCUSED'
+                    // Effectively-absent statuses (no real mark yet, or already absent) collapse to
+                    // one "current" bucket so we never show a button that's a no-op.
+                    const isAttended = s.status === 'ATTENDED'
+                    const isExcused = s.status === 'EXCUSED'
+                    const isAbsent = s.status === 'ABSENT' || s.status === 'MISSED' || s.status === 'UPCOMING'
                     const dateKey = String(s.date).slice(0, 10)
+                    const isMarking = (status: string) => markingDate?.date === dateKey && markingDate.status === status
                     return (
-                      <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-dark-750 border border-dark-700">
+                      <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-dark-750 border border-dark-700 flex-wrap gap-1.5">
                         <span className="text-white text-sm">{new Date(s.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                         <div className="flex items-center gap-2">
                           <span className={cn('badge text-xs', badge)}>{s.status === 'MISSED' ? 'Absent' : s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
-                          {canExcuse && (
-                            <button onClick={() => markExcuse(dateKey)} disabled={excusingDate === dateKey}
+                          {!isAttended && (
+                            <button onClick={() => clickAttend(dateKey)} disabled={!!markingDate}
+                              onBlur={() => { if (pendingAttendDate === dateKey) setPendingAttendDate(null) }}
+                              className={cn('text-xs font-medium disabled:opacity-50', pendingAttendDate === dateKey ? 'text-primary-300 font-bold' : 'text-primary-400 hover:text-primary-300')}>
+                              {isMarking('ATTENDED') ? 'Marking…' : pendingAttendDate === dateKey ? 'Tap again to confirm' : 'Attend'}
+                            </button>
+                          )}
+                          {!isExcused && (
+                            <button onClick={() => markStatus(dateKey, 'EXCUSED')} disabled={!!markingDate}
                               className="text-blue-400 text-xs font-medium hover:text-blue-300 disabled:opacity-50">
-                              {excusingDate === dateKey ? 'Excusing…' : 'Excuse'}
+                              {isMarking('EXCUSED') ? 'Excusing…' : 'Excuse'}
+                            </button>
+                          )}
+                          {!isAbsent && (
+                            <button onClick={() => markStatus(dateKey, 'ABSENT')} disabled={!!markingDate}
+                              className="text-crimson-400 text-xs font-medium hover:text-crimson-300 disabled:opacity-50">
+                              {isMarking('ABSENT') ? 'Marking…' : 'Absent'}
                             </button>
                           )}
                         </div>

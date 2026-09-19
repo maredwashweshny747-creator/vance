@@ -23,6 +23,12 @@ export default function BranchesPage() {
   const [detail, setDetail]      = useState<any>(null)
   const [detailLoading, setDetailLoading] = useState(false)
   const [form, setForm] = useState<{ name:string; address:string; phone:string; email:string; manager:string; sports:string[] }>({ name:'', address:'', phone:'', email:'', manager:'', sports:[] })
+  const [sportInput, setSportInput] = useState('')
+  function addSport() {
+    const v = sportInput.trim()
+    if (v && !form.sports.includes(v)) setForm(f => ({ ...f, sports: [...f.sports, v] }))
+    setSportInput('')
+  }
 
   function load() {
     setLoading(true)
@@ -45,7 +51,7 @@ export default function BranchesPage() {
   async function addBranch(e:React.FormEvent) {
     e.preventDefault()
     const res = await fetch('/api/branches',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(form)})
-    if(res.ok){ toast.success('Branch added!'); setShowForm(false); setForm({name:'',address:'',phone:'',email:'',manager:'',sports:[]}); load() }
+    if(res.ok){ toast.success('Branch added!'); setShowForm(false); setForm({name:'',address:'',phone:'',email:'',manager:'',sports:[]}); setSportInput(''); load() }
     else toast.error('Failed')
   }
 
@@ -312,16 +318,22 @@ export default function BranchesPage() {
                 <div><label className="label">Branch Manager</label><input value={form.manager} onChange={e=>setForm(f=>({...f,manager:e.target.value}))} className="input" placeholder="Manager name"/></div>
                 <div>
                   <label className="label">Sports Offered</label>
-                  <div className="grid grid-cols-2 gap-1.5 mt-1 max-h-48 overflow-y-auto pr-1">
-                    {DISCIPLINE_CATEGORIES.filter(c => c !== 'OTHER').map(cat => (
-                      <label key={cat} className={cn('flex items-center gap-2 px-2.5 py-2 rounded-lg border text-xs cursor-pointer transition-colors',
-                        form.sports.includes(cat) ? 'bg-primary-400/10 border-primary-400/30 text-primary-400' : 'border-dark-600 text-dark-300 hover:border-dark-500')}>
-                        <input type="checkbox" checked={form.sports.includes(cat)} className="accent-primary-400"
-                          onChange={e => setForm(f => ({ ...f, sports: e.target.checked ? [...f.sports, cat] : f.sports.filter(s => s !== cat) }))} />
-                        {DISCIPLINE_SHORT[cat]}
-                      </label>
-                    ))}
+                  <div className="flex gap-2">
+                    <input value={sportInput} onChange={e => setSportInput(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addSport() } }}
+                      placeholder="Type a sport, e.g. Boxing" className="input flex-1" />
+                    <button type="button" onClick={addSport} className="btn-ghost px-4">Add</button>
                   </div>
+                  {form.sports.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {form.sports.map(s => (
+                        <span key={s} className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-primary-400/10 border border-primary-400/30 text-primary-400 text-xs">
+                          {s}
+                          <button type="button" onClick={() => setForm(f => ({ ...f, sports: f.sports.filter(x => x !== s) }))} className="hover:text-white"><X size={11}/></button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="bg-primary-400/5 border border-primary-400/20 rounded-xl p-3 text-xs text-primary-400">
                   After adding a branch, assign fighters to it from the Fighters page and classes from the Classes page.
