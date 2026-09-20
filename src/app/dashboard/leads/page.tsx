@@ -314,7 +314,7 @@ export default function LeadsPage() {
                     ))}
                   </div>
                   <div className="flex gap-2">
-                    <input value={interactionNote} onChange={e=>setInteractionNote(e.target.value)} placeholder="What happened?" className="input flex-1 text-sm py-2"/>
+                    <input value={interactionNote} onChange={e=>setInteractionNote(e.target.value)} placeholder="What happened?" className="input flex-1 text-base sm:text-sm py-2"/>
                     <button onClick={addInteraction} className="btn-primary px-4 py-2 text-sm">Log</button>
                   </div>
                 </div>

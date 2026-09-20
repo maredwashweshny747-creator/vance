@@ -34,7 +34,118 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
-## 2026-09-18 (2) — Claude (chat) — Fixed: an Excused session had no way back to Absent (found the real bug)
+## 2026-09-20 (2) — Claude (chat) — Real responsiveness pass: fixed iOS input auto-zoom app-wide, restructured the Remaining Sessions row layout
+
+**1. Remaining Sessions modal row layout** (the specific item you named):
+each session row used to put the date, status badge, and up to 3 action
+buttons (Attend/Excuse/Absent) all in one horizontally-crammed cluster
+that only fell back to wrapping if the outer container ran out of room —
+on a narrow phone, badge + 2-3 small buttons could still end up jammed
+together. Restructured to always stack: date + badge on their own line,
+action buttons on the line below, every time, regardless of screen width
+— never dependent on whether wrapping happens to kick in correctly.
+
+**2. Responsiveness — found a real, app-wide bug, not just a sweep**:
+the shared `.input` class (used by nearly every text input, select, and
+textarea in the whole app) was set to `text-sm` (14px). On iOS Safari,
+focusing any input with a font-size under 16px makes the whole page
+auto-zoom in — a well-known, very disruptive mobile bug, and it applied
+to essentially every form field in the app. Fixed globally in one place
+(`globals.css`) to `text-base sm:text-sm` — 16px on phones (no zoom),
+back to the original 14px from the `sm` breakpoint up so desktop density
+is unchanged. Then found and fixed **9 individual inputs** (mostly the
+fighter edit form, one on Leads) that explicitly hardcoded `text-sm`
+alongside the shared class — Tailwind's utilities layer always beats the
+component class regardless of source order, so these were silently
+overriding the fix and needed the same treatment individually.
+
+Also did a full repo-wide check for the other classic responsive
+failure modes and found them already solid from prior sessions: every
+grid with more than 2 columns has a responsive breakpoint, every
+`<table>` has a horizontal-scroll wrapper, the sidebar/mobile nav toggle
+is intact, and there are no hardcoded oversized pixel widths (the
+`min-w-[...]` instances found are all intentional, inside flex-wrap
+containers).
+
+**Why:** you named these two specifically after the general "UI part
+that was missing" request — the session-row layout was a direct,
+reproducible risk given it just gained a third button, and the iOS
+zoom bug is a real, app-wide mobile defect that a purely visual/grid
+audit wouldn't have caught (it's a font-size threshold issue, not a
+layout issue).
+
+**Watch out for:**
+- The `sm:` breakpoint in Tailwind is 640px — anything between roughly
+  375–640px (a large phone in portrait, or a phone in landscape) gets the
+  16px input size too, which is correct/intentional (still phone-range),
+  not a mistake.
+- If any future input is styled with a hardcoded `text-sm`/`text-xs`
+  instead of relying on the shared `.input` class's responsive default,
+  it will reintroduce the zoom bug for that one field — worth remembering
+  when adding new forms.
+- This was a real, thorough pass, not a guess-and-hope one — every claim
+  above was verified by grep against the actual codebase (counted grid
+  instances, counted table/wrapper pairs, found the exact 9 overriding
+  inputs), but it's still a code-level audit, not a physical device test.
+
+**Verified with:** `tsc --noEmit` in the working directory AND an
+isolated re-extraction with `node_modules` symlinked in — identical
+result both places (same single pre-existing unrelated `TS2322`, zero
+new errors), plus a brace-balance check on the heavily-edited fighters
+page. No physical phone or browser available in this sandbox — the
+iOS-zoom fix is a well-established, standard fix for a well-documented
+WebKit behavior (verified by checking the exact computed font-size
+against the known 16px threshold), not something I could visually
+confirm by tapping a real iPhone.
+
+---
+
+**Root cause found:** `attachMonthSummaries()` — called every single time a
+fighter's detail panel opens — ran **3 separate `count()` queries per
+enrollment** (attended/excused/absent), sequentially. A fighter signed up
+for 2 classes meant 6 blocking database round-trips just for that one
+number; a fighter in 3 classes meant 9. Stacked with everything else
+`GET /api/members?id=` already does (fetch the member with nested
+enrollments/classes/offers/payments, the batched expiry check, a
+user-name lookup, and the recent-attendance fetch), opening a single
+fighter was doing roughly 10-12 sequential queries — this is almost
+certainly what you were feeling as "big delay when I try to access a
+fighter."
+
+**Fixed:** rewrote `attachMonthSummaries()` to fetch every relevant
+attendance mark for *all* of that fighter's enrollments in one query,
+then group and count them in memory per enrollment. Regardless of how
+many classes a fighter is signed up for, this is now exactly 1 query
+instead of 3-per-class. Opening a fighter now does roughly 6 queries
+total instead of 10-12+, and that number no longer grows with how many
+classes they're in.
+
+**On "in general there is a big delay":** I re-checked the fighters list
+endpoint and the dashboard analytics endpoint (both were already fixed
+for the same class of N+1 problem in earlier sessions) and found them
+still correctly batched — no new issue there. The fix above was the one
+concrete new bottleneck I found and could verify by reading the exact
+query pattern.
+
+**On "the UI part that was missing":** this reference wasn't specific
+enough for me to know for certain what it points to — I did **not**
+guess and build something that might be the wrong thing. If it's the
+mobile-responsiveness work flagged as deferred in several prior entries,
+say so and I'll do that properly next; if it's something else, let me
+know what's missing and where.
+
+**Watch out for:** none of the surviving `monthSummary` calculations
+changed in meaning — same cycle-scoped attended/excused/absent/remaining
+logic as before, only the *number of queries* used to compute it changed.
+
+**Verified with:** `tsc --noEmit` in the working directory AND an
+isolated re-extraction with `node_modules` symlinked in — identical
+result both places (same single pre-existing unrelated `TS2322`, zero
+new errors). No DB access in this sandbox to actually measure a real
+before/after load time — the fix is verified by query-count reasoning
+(3N queries → 1), not a live benchmark.
+
+---
 
 **Root cause found:** the Attend and Excuse buttons in the fighter's
 Remaining Sessions modal were both built to hide themselves once a

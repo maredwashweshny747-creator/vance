@@ -652,24 +652,24 @@ export default function FightersPage() {
                     <div className="space-y-2 pt-1">
                       <PhotoPicker photo={editForm.photo} name={`${editForm.firstName} ${editForm.lastName}`} onChange={dataUrl => setEditForm(f => ({ ...f, photo: dataUrl }))} />
                       <div className="grid grid-cols-2 gap-2">
-                        <div><label className="label text-xs">First Name</label><input value={editForm.firstName} onChange={e => setEditForm(f => ({ ...f, firstName: e.target.value }))} className="input py-2 text-sm" /></div>
-                        <div><label className="label text-xs">Last Name</label><input value={editForm.lastName} onChange={e => setEditForm(f => ({ ...f, lastName: e.target.value }))} className="input py-2 text-sm" /></div>
+                        <div><label className="label text-xs">First Name</label><input value={editForm.firstName} onChange={e => setEditForm(f => ({ ...f, firstName: e.target.value }))} className="input py-2 text-base sm:text-sm" /></div>
+                        <div><label className="label text-xs">Last Name</label><input value={editForm.lastName} onChange={e => setEditForm(f => ({ ...f, lastName: e.target.value }))} className="input py-2 text-base sm:text-sm" /></div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
-                        <div><label className="label text-xs">Email</label><input type="email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} className="input py-2 text-sm" /></div>
-                        <div><label className="label text-xs">Phone</label><input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} className="input py-2 text-sm" /></div>
-                        <div><label className="label text-xs">Parent Phone</label><input value={editForm.parentPhone} onChange={e => setEditForm(f => ({ ...f, parentPhone: e.target.value }))} className="input py-2 text-sm" /></div>
+                        <div><label className="label text-xs">Email</label><input type="email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} className="input py-2 text-base sm:text-sm" /></div>
+                        <div><label className="label text-xs">Phone</label><input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} className="input py-2 text-base sm:text-sm" /></div>
+                        <div><label className="label text-xs">Parent Phone</label><input value={editForm.parentPhone} onChange={e => setEditForm(f => ({ ...f, parentPhone: e.target.value }))} className="input py-2 text-base sm:text-sm" /></div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
-                        <div><label className="label text-xs">Birth Year</label><input type="number" value={editForm.birthYear} onChange={e => setEditForm(f => ({ ...f, birthYear: e.target.value }))} className="input py-2 text-sm" placeholder="e.g. 1995" /></div>
+                        <div><label className="label text-xs">Birth Year</label><input type="number" value={editForm.birthYear} onChange={e => setEditForm(f => ({ ...f, birthYear: e.target.value }))} className="input py-2 text-base sm:text-sm" placeholder="e.g. 1995" /></div>
                         <div><label className="label text-xs">Branch</label>
-                          <select value={editForm.branchId} onChange={e => setEditForm(f => ({ ...f, branchId: e.target.value }))} className="input py-2 text-sm">
+                          <select value={editForm.branchId} onChange={e => setEditForm(f => ({ ...f, branchId: e.target.value }))} className="input py-2 text-base sm:text-sm">
                             <option value="">Unassigned</option>
                             {branches.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
                           </select>
                         </div>
                       </div>
-                      <div><label className="label text-xs">Notes</label><textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} className="input py-2 text-sm h-16 resize-none" /></div>
+                      <div><label className="label text-xs">Notes</label><textarea value={editForm.notes} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))} className="input py-2 text-base sm:text-sm h-16 resize-none" /></div>
                       <div className="flex gap-2 pt-1">
                         <button onClick={() => setEditingFighter(false)} className="btn-ghost flex-1 justify-center text-sm py-2">Cancel</button>
                         <button onClick={saveFighterEdit} disabled={savingEdit} className="btn-primary flex-1 justify-center text-sm py-2 disabled:opacity-50">{savingEdit ? 'Saving…' : 'Save'}</button>
@@ -947,10 +947,12 @@ export default function FightersPage() {
                     const dateKey = String(s.date).slice(0, 10)
                     const isMarking = (status: string) => markingDate?.date === dateKey && markingDate.status === status
                     return (
-                      <div key={i} className="flex items-center justify-between px-3 py-2 rounded-lg bg-dark-750 border border-dark-700 flex-wrap gap-1.5">
-                        <span className="text-white text-sm">{new Date(s.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
-                        <div className="flex items-center gap-2">
-                          <span className={cn('badge text-xs', badge)}>{s.status === 'MISSED' ? 'Absent' : s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
+                      <div key={i} className="px-3 py-2.5 rounded-lg bg-dark-750 border border-dark-700 space-y-2">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-white text-sm">{new Date(s.date).toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                          <span className={cn('badge text-xs flex-shrink-0', badge)}>{s.status === 'MISSED' ? 'Absent' : s.status.charAt(0) + s.status.slice(1).toLowerCase()}</span>
+                        </div>
+                        <div className="flex items-center gap-3 flex-wrap">
                           {!isAttended && (
                             <button onClick={() => clickAttend(dateKey)} disabled={!!markingDate}
                               onBlur={() => { if (pendingAttendDate === dateKey) setPendingAttendDate(null) }}

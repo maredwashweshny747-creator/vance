@@ -65,7 +65,7 @@
   .input {
     @apply w-full bg-dark-700 border border-dark-600 rounded-lg px-4 py-3 text-white 
            placeholder:text-dark-300 focus:outline-none focus:border-primary-400/50 focus:ring-1 
-           focus:ring-primary-400/30 transition-all duration-200 text-sm font-body;
+           focus:ring-primary-400/30 transition-all duration-200 text-base sm:text-sm font-body;
   }
 
   .label {

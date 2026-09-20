@@ -85,8 +85,7 @@ export async function POST(req: NextRequest) {
   const remap = (oldId: string | null | undefined) => (oldId ? idMap.get(oldId) ?? null : null)
 
   try {
-    const result = await prisma.$transaction(
-  async (tx) => {
+    const result = await prisma.$transaction(async (tx) => {
       // Generate a unique slug from the gym name.
       const baseSlug = String(body.gym?.name || 'restored-gym').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'restored-gym'
       let slug = baseSlug, n = 0
@@ -275,13 +274,8 @@ export async function POST(req: NextRequest) {
         }
       }
 
-         return gym
-  },
-  {
-    maxWait: 10000,
-    timeout: 120000,
-  }
-)
+      return gym
+    })
 
     return NextResponse.json({ success: true, gymSlug: result.slug, gymName: result.name })
   } catch (err: any) {

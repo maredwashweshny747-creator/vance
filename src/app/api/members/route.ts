@@ -22,20 +22,34 @@ async function withUserNames<T extends Record<string, any>>(rows: T[], idFields:
 
 async function attachMonthSummaries(enrollments: any[]) {
   const withNames = await withUserNames(enrollments, ['addedById', 'lastActionById'])
-  return Promise.all(withNames.map(async (e: any) => {
+  if (withNames.length === 0) return withNames
+
+  // One query for every enrollment's marks instead of 3 count() calls PER enrollment —
+  // opening a fighter with 2-3 classes was doing 6-9 sequential round-trips here alone.
+  const allMarks = await prisma.classAttendance.findMany({
+    where: { enrollmentId: { in: withNames.map((e: any) => e.id) }, status: { in: ['ATTENDED', 'EXCUSED', 'ABSENT'] } },
+    select: { enrollmentId: true, status: true, date: true },
+  })
+  const marksByEnrollment = new Map<string, typeof allMarks>()
+  for (const m of allMarks) {
+    const list = marksByEnrollment.get(m.enrollmentId) || []
+    list.push(m)
+    marksByEnrollment.set(m.enrollmentId, list)
+  }
+
+  return withNames.map((e: any) => {
     // Scoped to THIS enrollment's own current cycle (its startDate), not the calendar
     // month — a multi-month offer's "remaining" must reflect the whole cycle's usage,
     // not just whatever's happened since the 1st of this month.
     const cycleStart = new Date(e.startDate)
-    const [attended, excused, absent] = await Promise.all([
-      prisma.classAttendance.count({ where: { enrollmentId: e.id, date: { gte: cycleStart }, status: 'ATTENDED' } }),
-      prisma.classAttendance.count({ where: { enrollmentId: e.id, date: { gte: cycleStart }, status: 'EXCUSED' } }),
-      prisma.classAttendance.count({ where: { enrollmentId: e.id, date: { gte: cycleStart }, status: 'ABSENT' } }),
-    ])
+    const marks = (marksByEnrollment.get(e.id) || []).filter(m => new Date(m.date) >= cycleStart)
+    const attended = marks.filter(m => m.status === 'ATTENDED').length
+    const excused = marks.filter(m => m.status === 'EXCUSED').length
+    const absent = marks.filter(m => m.status === 'ABSENT').length
     const sessionsAllowed = sessionsAllowedForEnrollment(e, e.class || {})
     const remaining = Math.max(0, sessionsAllowed - attended - absent)
     return { ...e, monthSummary: { attended, excused, absent, remaining, sessionsAllowed } }
-  }))
+  })
 }
 
 export async function GET(req: NextRequest) {
