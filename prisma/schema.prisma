@@ -24,6 +24,7 @@ model User {
   coach         Coach?
   gym           Gym?
   sessions      Session[]
+  gender String?
 }
 
 model Account {
@@ -97,6 +98,7 @@ model Member {
   firstName        String
   lastName         String
   email            String?
+  gender           String?
   phone            String?           @unique
   parentPhone      String?
   address          String?
@@ -132,6 +134,7 @@ model Coach {
   userId             String?           @unique
   firstName          String
   lastName           String
+  gender             String?
   email              String
   phone              String?
   photo              String?
