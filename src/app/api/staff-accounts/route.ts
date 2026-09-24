@@ -11,7 +11,7 @@ export async function GET() {
   const { gym } = result
   const accounts = await prisma.user.findMany({
     where: { staffGymId: gym.id, role: { in: ['RECEPTIONIST', 'COACH'] } },
-    select: { id: true, name: true, email: true, role: true, phone: true, canDelete: true, createdAt: true, coach: true },
+    select: { id: true, name: true, email: true, role: true, phone: true, gender: true, canDelete: true, createdAt: true, coach: true },
     orderBy: { createdAt: 'desc' },
   })
   return NextResponse.json(accounts)
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   if ('error' in result) return result.error
   if (!isAdmin(result.session)) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
   const { gym } = result
-  const { name, email, password, role, phone, canDelete: canDeleteFlag, sessionRate, privateSessionRate, specialties } = await req.json()
+  const { name, email, password, role, phone, gender, canDelete: canDeleteFlag, sessionRate, privateSessionRate, specialties } = await req.json()
   if (!name || !email || !password) return NextResponse.json({ error: 'All fields required' }, { status: 400 })
   if (password.length < 8) return NextResponse.json({ error: 'Password must be 8+ characters' }, { status: 400 })
   const accountRole = role === 'COACH' ? 'COACH' : 'RECEPTIONIST'
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
         })
         const coach = await tx.coach.create({
           data: {
-            gymId: gym.id, userId: user.id, firstName, lastName, email: cleanEmail, phone: phone || null,
+            gymId: gym.id, userId: user.id, firstName, lastName, email: cleanEmail, phone: phone || null, gender: gender || null,
             sessionRate: Number(sessionRate) || 0,
             privateSessionRate: Number(privateSessionRate) || 0,
             specialties: specialties || null,
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
     }
 
     const account = await prisma.user.create({
-      data: { name, email: cleanEmail, password: hashed, role: 'RECEPTIONIST', staffGymId: gym.id, phone: phone || null, canDelete: canDeleteValue },
+      data: { name, email: cleanEmail, password: hashed, role: 'RECEPTIONIST', staffGymId: gym.id, phone: phone || null, gender: gender || null, canDelete: canDeleteValue },
     })
     return NextResponse.json({ id: account.id, name: account.name, email: account.email, role: account.role })
   } catch (err: any) {
@@ -81,6 +81,7 @@ export async function PATCH(req: NextRequest) {
   if (body.name !== undefined) userUpdate.name = body.name
   if (body.canDelete !== undefined) userUpdate.canDelete = !!body.canDelete
   if (account.role === 'RECEPTIONIST' && body.phone !== undefined) userUpdate.phone = body.phone || null
+  if (account.role === 'RECEPTIONIST' && body.gender !== undefined) userUpdate.gender = body.gender || null
   if (Object.keys(userUpdate).length > 0) await prisma.user.update({ where: { id }, data: userUpdate })
 
   if (account.role === 'COACH' && account.coach) {
@@ -91,6 +92,7 @@ export async function PATCH(req: NextRequest) {
       coachUpdate.lastName = rest.join(' ') || firstName
     }
     if (body.phone !== undefined) coachUpdate.phone = body.phone || null
+    if (body.gender !== undefined) coachUpdate.gender = body.gender || null
     if (body.sessionRate !== undefined) coachUpdate.sessionRate = Number(body.sessionRate) || 0
     if (body.privateSessionRate !== undefined) coachUpdate.privateSessionRate = Number(body.privateSessionRate) || 0
     if (body.specialties !== undefined) coachUpdate.specialties = body.specialties || null

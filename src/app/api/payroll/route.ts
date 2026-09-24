@@ -26,15 +26,23 @@ async function getCoveredAwayMap(gymId: string, dateFilter?: { gte: Date; lt: Da
 // Cover-aware for free: CoachAttendance.coachId is always "whoever gets credit" by
 // construction (the POST handler stores the cover coach's id there, not the absent
 // assigned coach's), so a plain count already attributes correctly — no override map needed.
+// De-duplicates overlapping-time classes: if a coach has two classes scheduled at the
+// exact same start time on the same day (e.g. two "Kickboxing Kids" listings that both
+// run Sat/Mon 8-10), marking both ATTENDED can only ever represent one real session
+// physically taught — credited once, not twice.
 async function countSessions(gymId: string, coachId: string, month: number, year: number, classType: 'GROUP' | 'PRIVATE') {
   const start = new Date(year, month - 1, 1)
   const end   = new Date(year, month, 1)
-  return prisma.coachAttendance.count({
+  const marks = await prisma.coachAttendance.findMany({
     where: {
       coachId, status: 'ATTENDED', date: { gte: start, lt: end },
       class: { gymId, status: 'APPROVED', type: classType === 'PRIVATE' ? 'PRIVATE' : { not: 'PRIVATE' } },
     },
+    select: { date: true, class: { select: { startTimeOfDay: true } } },
   })
+  const seen = new Set<string>()
+  for (const m of marks) seen.add(`${m.date.toISOString()}|${m.class.startTimeOfDay}`)
+  return seen.size
 }
 
 // Total fighter attendance records ever logged against classes this coach teaches —

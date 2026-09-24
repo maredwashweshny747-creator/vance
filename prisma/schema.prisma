@@ -1,5 +1,3 @@
-// This is your Prisma schema file
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -15,18 +13,17 @@ model User {
   name          String?
   password      String?
   image         String?
-  role          String    @default("ADMIN") // ADMIN, RECEPTIONIST, COACH
-  phone         String?   // receptionist contact number (coaches use Coach.phone instead)
-  canDelete     Boolean   @default(true) // RECEPTIONIST/COACH only — admin can revoke delete access per account
-  staffGymId    String?   // for RECEPTIONIST/COACH: which gym they belong to
+  role          String    @default("ADMIN")
+  phone         String?
+  canDelete     Boolean   @default(true)
+  staffGymId    String?
   emailVerified DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
-
-  gym       Gym?
-  coach     Coach?
-  accounts  Account[]
-  sessions  Session[]
+  accounts      Account[]
+  coach         Coach?
+  gym           Gym?
+  sessions      Session[]
 }
 
 model Account {
@@ -42,8 +39,7 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
 }
@@ -53,79 +49,75 @@ model Session {
   sessionToken String   @unique
   userId       String
   expires      DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model Gym {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  logo        String?
-  address     String?
-  phone       String?
-  email       String?
-  website     String?
-  timezone    String   @default("UTC")
-  currency    String   @default("EGP")
-  plan        String   @default("STARTER") // STARTER, PROFESSIONAL, ENTERPRISE
-  planStatus  String   @default("ACTIVE")  // ACTIVE, PAST_DUE, CANCELED
-  whatsappMessageTemplate String? // pre-filled text used by the WhatsApp button on a fighter's profile
-  fighterIdPrefix String @default("20006") // configurable fixed prefix for public Fighter IDs, e.g. 20006 -> 200060001
-  fighterIdSeq    Int    @default(0)       // atomically incremented — the next fighter gets fighterIdSeq+1
-  stripeCustomerId     String?
-  stripeSubscriptionId String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  ownerId  String @unique
-  owner    User   @relation(fields: [ownerId], references: [id])
-
-  members    Member[]
-  coaches    Coach[]
-  classes    GymClass[]
-  payments   Payment[]
-  announcements Announcement[]
-  leads      Lead[]
-  fighterFeedback FighterFeedback[]
-  staff      Staff[]
-  payrollRuns PayrollRun[]
-  coachPayrollRuns CoachPayrollRun[]
-  branches   Branch[]
-  inventory  InventoryItem[]
-  storeSales StoreSale[]
-  workoutPlans WorkoutPlan[]
+  id                      String            @id @default(cuid())
+  name                    String
+  slug                    String            @unique
+  logo                    String?
+  address                 String?
+  phone                   String?
+  email                   String?
+  website                 String?
+  timezone                String            @default("UTC")
+  currency                String            @default("EGP")
+  plan                    String            @default("STARTER")
+  planStatus              String            @default("ACTIVE")
+  whatsappMessageTemplate String?
+  fighterIdPrefix         String            @default("20006")
+  fighterIdSeq            Int               @default(0)
+  stripeCustomerId        String?
+  stripeSubscriptionId    String?
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+  ownerId                 String            @unique
+  announcements           Announcement[]
+  branches                Branch[]
+  coaches                 Coach[]
+  coachPayrollRuns        CoachPayrollRun[]
+  fighterFeedback         FighterFeedback[]
+  owner                   User              @relation(fields: [ownerId], references: [id])
+  classes                 GymClass[]
+  inventory               InventoryItem[]
+  leads                   Lead[]
+  members                 Member[]
+  payments                Payment[]
+  payrollRuns             PayrollRun[]
+  staff                   Staff[]
+  storeSales              StoreSale[]
+  workoutPlans            WorkoutPlan[]
 }
 
 model Member {
-  id          String   @id @default(cuid())
-  gymId       String
-  fighterId   String   // 8-digit sequential ID (e.g. "00002000") — also the fighter portal login
-  firstName   String
-  lastName    String
-  email       String?
-  phone       String?  @unique // must be unique across the whole database, per spec
-  parentPhone String?  // optional — parent/guardian contact, shown alongside the fighter's own phone
-  address     String?
-  dateOfBirth String?
-  birthYear   Int?
-  photo       String?
-  notes       String?
+  id               String            @id @default(cuid())
+  gymId            String
+  fighterId        String
+  firstName        String
+  lastName         String
+  email            String?
+  phone            String?           @unique
+  parentPhone      String?
+  address          String?
+  dateOfBirth      String?
+  birthYear        Int?
+  photo            String?
+  notes            String?
   branchId         String?
   stripeCustomerId String?
-  createdById      String?  // which user (admin/receptionist/coach) created this fighter
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  gym      Gym             @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  branch   Branch?         @relation(fields: [branchId], references: [id])
-  enrollments  ClassEnrollment[]  // the classes/disciplines this fighter is signed into
-  payments     Payment[]
-  classBookings ClassBooking[]
-  attendance   ClassAttendance[]
-  progress     MemberProgress[]
-  workoutPlans WorkoutPlan[]
-  feedback     FighterFeedback[]
+  createdById      String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  attendance       ClassAttendance[]
+  classBookings    ClassBooking[]
+  enrollments      ClassEnrollment[]
+  feedback         FighterFeedback[]
+  branch           Branch?           @relation(fields: [branchId], references: [id])
+  gym              Gym               @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  progress         MemberProgress[]
+  payments         Payment[]
+  workoutPlans     WorkoutPlan[]
 
   @@unique([gymId, email])
   @@unique([gymId, fighterId])
@@ -134,55 +126,44 @@ model Member {
   @@index([parentPhone])
 }
 
-// ─── Coaches (logged-in users, paid per session) ──────────────────────────
 model Coach {
-  id          String   @id @default(cuid())
-  gymId       String
-  userId      String?  @unique
-  firstName   String
-  lastName    String
-  email       String
-  phone       String?
-  photo       String?
-  specialties String?  // JSON array, e.g. Boxing, Muay Thai, BJJ
-  bio         String?
-  sessionRate Float    @default(0) // paid per session taught (group classes)
-  privateSessionRate Float @default(0) // paid per private (1:1) session taught
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  gym          Gym               @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  user         User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
-  classes      GymClass[]
-  workoutPlans WorkoutPlan[]
-  payrollRuns  CoachPayrollRun[]
-  attendance   CoachAttendance[]
+  id                 String            @id @default(cuid())
+  gymId              String
+  userId             String?           @unique
+  firstName          String
+  lastName           String
+  email              String
+  phone              String?
+  photo              String?
+  specialties        String?
+  bio                String?
+  sessionRate        Float             @default(0)
+  privateSessionRate Float             @default(0)
+  isActive           Boolean           @default(true)
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  gym                Gym               @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  user               User?             @relation(fields: [userId], references: [id])
+  attendance         CoachAttendance[]
+  payrollRuns        CoachPayrollRun[]
+  classes            GymClass[]
+  workoutPlans       WorkoutPlan[]
 
   @@unique([gymId, email])
 }
 
-// Tracks when a coach actually showed up (separate from a class's fighter roster —
-// this is "did the coach clock in", useful for accountability/payroll cross-checks).
-// Did the coach show up to teach a specific class on a specific date — separate
-// from a fighter's ClassAttendance, but the same "one row per date" shape.
-// Lets a receptionist see, per class, how many of a coach's assigned sessions
-// they actually attended vs missed. Also created by scanning the coach's QR.
 model CoachAttendance {
-  id         String   @id @default(cuid())
-  coachId    String
-  classId    String
-  date       DateTime // calendar date of the session
-  status     String   @default("ATTENDED") // ATTENDED, ABSENT
-  method     String   @default("MANUAL")   // MANUAL, QR, ROSTER
-  markedById String?
-  markedAt   DateTime @default(now())
-  assignedCoachId String? // the coach normally assigned to teach this class — kept for
-                          // history even when a different coach covers (coachId above is
-                          // always the one who actually gets attendance credit)
-
-  coach Coach    @relation(fields: [coachId], references: [id], onDelete: Cascade)
-  class GymClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  id              String   @id @default(cuid())
+  coachId         String
+  classId         String
+  date            DateTime
+  status          String   @default("ATTENDED")
+  method          String   @default("MANUAL")
+  markedById      String?
+  markedAt        DateTime @default(now())
+  assignedCoachId String?
+  class           GymClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  coach           Coach    @relation(fields: [coachId], references: [id], onDelete: Cascade)
 
   @@unique([coachId, classId, date])
   @@index([classId, date])
@@ -190,100 +171,89 @@ model CoachAttendance {
   @@index([coachId, status, date])
 }
 
-// A class IS the subscribable plan: "Kickboxing Adults" meets Mon/Wed/Sat,
-// costs $X per durationDays-day cycle. Fighters sign into the class directly.
 model GymClass {
-  id          String   @id @default(cuid())
-  gymId       String
-  coachId     String?
-  name        String
-  description String?
-  category    String?  // discipline (see src/lib/categories.ts)
-  type        String   @default("GROUP") // GROUP, PRIVATE
-  daysOfWeek     String[] @default([]) // which days it meets each week, e.g. ['MON','WED','SAT'] — empty when isOneTime
-  isOneTime      Boolean  @default(false) // a single one-off session instead of a recurring weekly class
-  sessionDate    DateTime? // the one date it happens, only used when isOneTime
-  startTimeOfDay String   @default("18:00") // "HH:MM", 24h
-  duration    Int      @default(60) // minutes per session
-  capacity    Int      @default(20)
-  price       Float    @default(0)  // cost to enroll for one cycle
-  durationDays Int     @default(30) // length of one billing cycle
-  location    String?
-  color       String?  @default("#ffc700")
-  branchId    String?
-  status        String  @default("PENDING") // PENDING, APPROVED, REJECTED
-  rejectionNote String?
-  isActive    Boolean  @default(true)
-  createdById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  gym      Gym            @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  branch   Branch?        @relation(fields: [branchId], references: [id])
-  coach    Coach?          @relation(fields: [coachId], references: [id])
-  bookings ClassBooking[]
-  enrollments ClassEnrollment[]
-  attendance  ClassAttendance[]
+  id              String            @id @default(cuid())
+  gymId           String
+  coachId         String?
+  name            String
+  description     String?
+  category        String?
+  type            String            @default("GROUP")
+  daysOfWeek      String[]          @default([])
+  isOneTime       Boolean           @default(false)
+  sessionDate     DateTime?
+  startTimeOfDay  String            @default("18:00")
+  duration        Int               @default(60)
+  capacity        Int               @default(20)
+  price           Float             @default(0)
+  durationDays    Int               @default(30)
+  location        String?
+  color           String?           @default("#ffc700")
+  branchId        String?
+  status          String            @default("PENDING")
+  rejectionNote   String?
+  isActive        Boolean           @default(true)
+  createdById     String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  attendance      ClassAttendance[]
+  bookings        ClassBooking[]
+  enrollments     ClassEnrollment[]
+  offers          ClassOffer[]
   coachAttendance CoachAttendance[]
-  payments    Payment[]
-  offers      ClassOffer[]
+  branch          Branch?           @relation(fields: [branchId], references: [id])
+  coach           Coach?            @relation(fields: [coachId], references: [id])
+  gym             Gym               @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  payments        Payment[]
 }
 
 model ClassOffer {
   id        String   @id @default(cuid())
   classId   String
-  months    Int?     // billing duration in months, e.g. 2, 3, 6 — for GROUP classes
-  sessions  Int?     // preset session-pack size, e.g. 10 — for PRIVATE classes instead of months
-  price     Float    // total price for the whole offer (the package deal, not per-unit)
-  label     String?  // optional display label, e.g. "Summer Special"
+  months    Int?
+  sessions  Int?
+  price     Float
+  label     String?
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
-
-  class GymClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  class     GymClass @relation(fields: [classId], references: [id], onDelete: Cascade)
 }
 
-// One fighter's subscription to one class. A fighter training MMA + Kickboxing has two of these.
 model ClassEnrollment {
-  id          String   @id @default(cuid())
-  memberId    String
-  classId     String
-  status      String   @default("ACTIVE") // ACTIVE, EXPIRED, CANCELED
-  startDate   DateTime @default(now())
-  endDate     DateTime?
-  addedById       String?   // who first enrolled the fighter
-  lastAction      String?   // CREATED, RENEWED, SWITCHED, CANCELED, EXPIRED
-  lastActionById  String?   // who performed the most recent action
-  lastActionAt    DateTime?
-  sessionCount    Int?      // for PRIVATE (session-based) classes: total sessions purchased this cycle
-  totalSessions   Int?      // for GROUP classes: total sessions committed at enroll/renew time —
-                             // fixed and independent of endDate, which can extend when a session
-                             // is excused (the fighter keeps all their sessions, just later)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  member Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  class  GymClass  @relation(fields: [classId], references: [id])
-  attendance ClassAttendance[]
-  payments   Payment[]
+  id             String            @id @default(cuid())
+  memberId       String
+  classId        String
+  status         String            @default("ACTIVE")
+  startDate      DateTime          @default(now())
+  endDate        DateTime?
+  addedById      String?
+  lastAction     String?
+  lastActionById String?
+  lastActionAt   DateTime?
+  sessionCount   Int?
+  totalSessions  Int?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  attendance     ClassAttendance[]
+  class          GymClass          @relation(fields: [classId], references: [id])
+  member         Member            @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  payments       Payment[]
 }
 
-// One fighter's mark (attended / absent / excused) for one class on one date —
-// this is both the QR/manual check-in record AND the roster the coach fills in.
 model ClassAttendance {
-  id           String   @id @default(cuid())
+  id           String          @id @default(cuid())
   classId      String
   enrollmentId String
   memberId     String
-  date         DateTime // just the calendar date this session occurred
-  status       String   @default("ATTENDED") // ATTENDED, ABSENT, EXCUSED
-  method       String   @default("MANUAL")   // MANUAL, QR, ROSTER
-  reason       String?  // note for an EXCUSED mark
+  date         DateTime
+  status       String          @default("ATTENDED")
+  method       String          @default("MANUAL")
+  reason       String?
   markedById   String?
-  markedAt     DateTime @default(now())
-
-  class      GymClass        @relation(fields: [classId], references: [id], onDelete: Cascade)
-  enrollment ClassEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
-  member     Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  markedAt     DateTime        @default(now())
+  class        GymClass        @relation(fields: [classId], references: [id], onDelete: Cascade)
+  enrollment   ClassEnrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  member       Member          @relation(fields: [memberId], references: [id], onDelete: Cascade)
 
   @@unique([enrollmentId, date])
   @@index([classId, date])
@@ -291,48 +261,45 @@ model ClassAttendance {
 }
 
 model ClassBooking {
-  id        String   @id @default(cuid())
-  classId   String
-  memberId  String
-  status    String   @default("CONFIRMED") // CONFIRMED, WAITLIST, CANCELED, ATTENDED
-  bookedAt  DateTime @default(now())
-
-  class  GymClass @relation(fields: [classId], references: [id], onDelete: Cascade)
-  member Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  id       String   @id @default(cuid())
+  classId  String
+  memberId String
+  status   String   @default("CONFIRMED")
+  bookedAt DateTime @default(now())
+  class    GymClass @relation(fields: [classId], references: [id], onDelete: Cascade)
+  member   Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
 
   @@unique([classId, memberId])
 }
 
 model Payment {
-  id          String   @id @default(cuid())
-  gymId       String
-  memberId    String?
-  classId     String?  // which class/subscription this payment is for (used for per-class revenue)
-  enrollmentId String? // the specific enrollment this payment belongs to — deleting the
-                        // enrollment (fighter removed from class) cascades and removes this row
-  amount      Float
-  originalAmount Float? // amount before any discount was applied
-  discountType   String? @default("NONE") // NONE, PERCENTAGE, FIXED
-  discountValue  Float?  @default(0)
-  currency    String   @default("EGP")
-  type        String   // MEMBERSHIP, CLASS, PERSONAL_TRAINING, PRODUCT
-  status      String   @default("PENDING") // PENDING, COMPLETED, FAILED, REFUNDED
-  method      String?  // CARD, CASH, BANK_TRANSFER, INSTAPAY, VODAFONE_CASH
-  proofPhoto  String?  // screenshot of the transfer, for InstaPay / Vodafone Cash
-  description String?
-  branchId      String?
+  id                    String           @id @default(cuid())
+  gymId                 String
+  memberId              String?
+  classId               String?
+  enrollmentId          String?
+  amount                Float
+  originalAmount        Float?
+  discountType          String?          @default("NONE")
+  discountValue         Float?           @default(0)
+  currency              String           @default("EGP")
+  type                  String
+  status                String           @default("PENDING")
+  method                String?
+  proofPhoto            String?
+  description           String?
+  branchId              String?
   stripePaymentIntentId String?
-  stripeInvoiceId String?
-  dueDate     DateTime?
-  paidAt      DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  gym        Gym              @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  member     Member?          @relation(fields: [memberId], references: [id])
-  branch     Branch?          @relation(fields: [branchId], references: [id])
-  class      GymClass?        @relation(fields: [classId], references: [id], onDelete: SetNull)
-  enrollment ClassEnrollment? @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  stripeInvoiceId       String?
+  dueDate               DateTime?
+  paidAt                DateTime?
+  createdAt             DateTime         @default(now())
+  updatedAt             DateTime         @updatedAt
+  branch                Branch?          @relation(fields: [branchId], references: [id])
+  class                 GymClass?        @relation(fields: [classId], references: [id])
+  enrollment            ClassEnrollment? @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  gym                   Gym              @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  member                Member?          @relation(fields: [memberId], references: [id])
 
   @@index([gymId, paidAt])
   @@index([gymId, status])
@@ -349,31 +316,27 @@ model Announcement {
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  gym Gym @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  gym       Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
 }
 
-// ─── FEATURE 1: Lead & Sales CRM ───────────────────────────────────────────
-
 model Lead {
-  id          String   @id @default(cuid())
-  gymId       String
-  firstName   String
-  lastName    String
-  email       String?
-  phone       String?
-  source      String   @default("WALK_IN") // WALK_IN, INSTAGRAM, WHATSAPP, WEBSITE, REFERRAL, OTHER
-  status      String   @default("NEW")     // NEW, CONTACTED, TRIAL, NEGOTIATING, CONVERTED, LOST
-  assignedTo  String?  // staff name
-  notes       String?
-  trialStart  DateTime?
-  trialEnd    DateTime?
-  followUpAt  DateTime?
-  convertedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  gym          Gym           @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  id           String            @id @default(cuid())
+  gymId        String
+  firstName    String
+  lastName     String
+  email        String?
+  phone        String?
+  source       String            @default("WALK_IN")
+  status       String            @default("NEW")
+  assignedTo   String?
+  notes        String?
+  trialStart   DateTime?
+  trialEnd     DateTime?
+  followUpAt   DateTime?
+  convertedAt  DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  gym          Gym               @relation(fields: [gymId], references: [id], onDelete: Cascade)
   interactions LeadInteraction[]
 
   @@index([gymId, status])
@@ -383,160 +346,142 @@ model Lead {
 model LeadInteraction {
   id        String   @id @default(cuid())
   leadId    String
-  type      String   // CALL, MESSAGE, EMAIL, VISIT, NOTE
+  type      String
   note      String
   createdAt DateTime @default(now())
-
-  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
 }
 
-// ─── FEATURE 2: Staff & Payroll (salaried front-of-house / management) ─────
-
 model Staff {
-  id         String   @id @default(cuid())
-  gymId      String
-  firstName  String
-  lastName   String
-  email      String
-  phone      String?
-  role       String   @default("STAFF") // STAFF, MANAGER
-  salary     Float    @default(0)       // base monthly salary
-  salaryType String   @default("MONTHLY") // MONTHLY, HOURLY
-  isActive   Boolean  @default(true)
-  branchId   String?
-  joinDate   DateTime @default(now())
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  gym         Gym          @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  branch      Branch?      @relation(fields: [branchId], references: [id])
+  id          String       @id @default(cuid())
+  gymId       String
+  firstName   String
+  lastName    String
+  email       String
+  phone       String?
+  role        String       @default("STAFF")
+  salary      Float        @default(0)
+  salaryType  String       @default("MONTHLY")
+  isActive    Boolean      @default(true)
+  branchId    String?
+  joinDate    DateTime     @default(now())
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
   payrollRuns PayrollRun[]
+  branch      Branch?      @relation(fields: [branchId], references: [id])
+  gym         Gym          @relation(fields: [gymId], references: [id], onDelete: Cascade)
 
   @@unique([gymId, email])
 }
 
 model PayrollRun {
-  id          String   @id @default(cuid())
-  gymId       String
-  staffId     String
-  month       Int      // 1-12
-  year        Int
-  baseSalary  Float
-  commission  Float    @default(0)
-  bonus       Float    @default(0)
-  deductions  Float    @default(0)
-  total       Float
-  status      String   @default("PENDING") // PENDING, PAID
-  paidAt      DateTime?
-  notes       String?
-  createdAt   DateTime @default(now())
-
-  gym   Gym   @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  staff Staff @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  id         String    @id @default(cuid())
+  gymId      String
+  staffId    String
+  month      Int
+  year       Int
+  baseSalary Float
+  commission Float     @default(0)
+  bonus      Float     @default(0)
+  deductions Float     @default(0)
+  total      Float
+  status     String    @default("PENDING")
+  paidAt     DateTime?
+  notes      String?
+  createdAt  DateTime  @default(now())
+  gym        Gym       @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  staff      Staff     @relation(fields: [staffId], references: [id], onDelete: Cascade)
 
   @@unique([staffId, month, year])
 }
 
-// ─── Coach Payroll (per-session, auto-computed from taught classes) ────────
-
 model CoachPayrollRun {
-  id           String    @id @default(cuid())
-  gymId        String
-  coachId      String
-  month        Int
-  year         Int
-  sessionCount Int       @default(0)
-  sessionRate  Float     @default(0)
-  privateSessionCount Int   @default(0)
-  privateSessionRate  Float @default(0)
-  bonus        Float     @default(0)
-  deductions   Float     @default(0)
-  total        Float     @default(0)
-  status       String    @default("PENDING") // PENDING, PAID
-  paidAt       DateTime?
-  notes        String?
-  createdAt    DateTime  @default(now())
-
-  gym   Gym   @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  coach Coach @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  id                  String    @id @default(cuid())
+  gymId               String
+  coachId             String
+  month               Int
+  year                Int
+  sessionCount        Int       @default(0)
+  sessionRate         Float     @default(0)
+  privateSessionCount Int       @default(0)
+  privateSessionRate  Float     @default(0)
+  bonus               Float     @default(0)
+  deductions          Float     @default(0)
+  total               Float     @default(0)
+  status              String    @default("PENDING")
+  paidAt              DateTime?
+  notes               String?
+  createdAt           DateTime  @default(now())
+  coach               Coach     @relation(fields: [coachId], references: [id], onDelete: Cascade)
+  gym                 Gym       @relation(fields: [gymId], references: [id], onDelete: Cascade)
 
   @@unique([coachId, month, year])
 }
 
-// ─── FEATURE 3: Branch Management ─────────────────────────────────────────
-
 model Branch {
-  id        String   @id @default(cuid())
+  id        String     @id @default(cuid())
   gymId     String
   name      String
   address   String?
   phone     String?
   email     String?
   manager   String?
-  sports    String[] @default([]) // disciplines offered at this branch (see src/lib/categories.ts)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  sports    String[]   @default([])
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
   gym       Gym        @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  members   Member[]
   classes   GymClass[]
+  members   Member[]
   payments  Payment[]
   staff     Staff[]
 }
 
-// ─── FEATURE 4: Inventory & Store ─────────────────────────────────────────
-
 model InventoryItem {
-  id           String   @id @default(cuid())
-  gymId        String
-  name         String
-  sku          String?
-  category     String   @default("SUPPLEMENT") // SUPPLEMENT, DRINK, MERCHANDISE, GEAR, OTHER
-  costPrice    Float    @default(0)
-  sellPrice    Float    @default(0)
-  stock        Int      @default(0)
-  lowStockAt   Int      @default(5)  // alert threshold
-  barcode      String?
-  description  String?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  gym   Gym        @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  sales StoreSale[]
+  id          String      @id @default(cuid())
+  gymId       String
+  name        String
+  sku         String?
+  category    String      @default("SUPPLEMENT")
+  costPrice   Float       @default(0)
+  sellPrice   Float       @default(0)
+  stock       Int         @default(0)
+  lowStockAt  Int         @default(5)
+  barcode     String?
+  description String?
+  isActive    Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  gym         Gym         @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  sales       StoreSale[]
 }
 
 model StoreSale {
-  id        String   @id @default(cuid())
+  id        String        @id @default(cuid())
   gymId     String
   itemId    String
   memberId  String?
-  quantity  Int      @default(1)
+  quantity  Int           @default(1)
   unitPrice Float
   total     Float
-  method    String   @default("CASH") // CASH, CARD
-  soldAt    DateTime @default(now())
-
-  gym    Gym           @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  item   InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  method    String        @default("CASH")
+  soldAt    DateTime      @default(now())
+  gym       Gym           @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  item      InventoryItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 }
 
-// ─── FEATURE 5: Member Progress & Workout Plans ───────────────────────────
-
 model MemberProgress {
-  id          String   @id @default(cuid())
-  memberId    String
-  weight      Float?
-  bodyFat     Float?
-  chest       Float?
-  waist       Float?
-  hips        Float?
-  arms        Float?
-  notes       String?
-  recordedAt  DateTime @default(now())
-
-  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  memberId   String
+  weight     Float?
+  bodyFat    Float?
+  chest      Float?
+  waist      Float?
+  hips       Float?
+  arms       Float?
+  notes      String?
+  recordedAt DateTime @default(now())
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
 }
 
 model FighterFeedback {
@@ -546,41 +491,38 @@ model FighterFeedback {
   message   String
   isRead    Boolean  @default(false)
   createdAt DateTime @default(now())
-
-  gym    Gym    @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  member Member @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  gym       Gym      @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  member    Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
 
   @@index([gymId, isRead])
 }
 
 model WorkoutPlan {
-  id          String   @id @default(cuid())
+  id          String         @id @default(cuid())
   gymId       String
   memberId    String
   coachId     String?
   title       String
   description String?
-  goal        String?  // WEIGHT_LOSS, MUSCLE_GAIN, ENDURANCE, FLEXIBILITY
-  weeks       Int      @default(4)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  gym      Gym           @relation(fields: [gymId], references: [id], onDelete: Cascade)
-  member   Member        @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  coach    Coach?        @relation(fields: [coachId], references: [id])
-  exercises PlanExercise[]
+  goal        String?
+  weeks       Int            @default(4)
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  exercises   PlanExercise[]
+  coach       Coach?         @relation(fields: [coachId], references: [id])
+  gym         Gym            @relation(fields: [gymId], references: [id], onDelete: Cascade)
+  member      Member         @relation(fields: [memberId], references: [id], onDelete: Cascade)
 }
 
 model PlanExercise {
-  id         String @id @default(cuid())
-  planId     String
-  name       String
-  sets       Int    @default(3)
-  reps       String @default("10-12")
-  rest       Int    @default(60) // seconds
-  day        Int    @default(1)  // day of week 1-7
-  notes      String?
-
-  plan WorkoutPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  id     String      @id @default(cuid())
+  planId String
+  name   String
+  sets   Int         @default(3)
+  reps   String      @default("10-12")
+  rest   Int         @default(60)
+  day    Int         @default(1)
+  notes  String?
+  plan   WorkoutPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
 }

@@ -98,11 +98,37 @@ export async function GET(req: NextRequest) {
     ] } : {}),
   }
 
+  if (!status || status === 'ALL') {
+    // Fast path — no computed-status filter needed, so paginate for real at the DB
+    // level: fetch only this page's rows instead of the entire matching roster.
+    const [total, pageMembers] = await Promise.all([
+      prisma.member.count({ where }),
+      prisma.member.findMany({
+        where,
+        include: { enrollments: { include: { class: true } } },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+    ])
+    const statusMap = await checkAndExpireEnrollmentsBatch(pageMembers.flatMap(m => m.enrollments))
+    const withStatus = pageMembers.map(m => {
+      for (const e of m.enrollments) (e as any).status = statusMap.get(e.id) || e.status
+      const overallStatus = m.enrollments.some(e => e.status === 'ACTIVE') ? 'ACTIVE'
+        : m.enrollments.some(e => e.status === 'EXPIRED') ? 'EXPIRED'
+        : m.enrollments.length > 0 ? 'CANCELED' : 'NO_PLAN'
+      return { ...m, overallStatus }
+    })
+    return NextResponse.json({ data: withStatus, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) })
+  }
+
   // Status (Active/Frozen/Expired/...) isn't a stored column — it's derived live from each
   // enrollment's expiry check — so it can't be pushed into the DB `where` clause. We fetch
   // every search-match, compute each member's real status, THEN filter and paginate in
   // memory. This trades DB-level pagination for correctness: filtering "Expired" now
-  // actually returns only expired fighters instead of silently ignoring the filter.
+  // actually returns only expired fighters instead of silently ignoring the filter. Only
+  // hit when a specific status filter is actually applied — the common "ALL" view above
+  // never pays this cost.
   const allMatching = await prisma.member.findMany({
     where,
     include: { enrollments: { include: { class: true } } },
@@ -120,7 +146,7 @@ export async function GET(req: NextRequest) {
     withStatus.push({ ...m, overallStatus })
   }
 
-  const filtered = status && status !== 'ALL' ? withStatus.filter(m => m.overallStatus === status) : withStatus
+  const filtered = withStatus.filter(m => m.overallStatus === status)
   const total = filtered.length
   const paged = filtered.slice((page - 1) * pageSize, page * pageSize)
 
@@ -154,6 +180,7 @@ export async function POST(req: NextRequest) {
           email:            body.email            || null,
           phone:            body.phone            || null,
           parentPhone:      body.parentPhone       || null,
+          gender:           body.gender            || null,
           photo:            body.photo            || null,
           birthYear:        body.birthYear ? Number(body.birthYear) : null,
           branchId:         body.branchId         || null,
@@ -230,7 +257,7 @@ export async function PATCH(req: NextRequest) {
   }
 
   const updateData: any = {}
-  const allowedFields = ['firstName','lastName','email','phone','parentPhone','photo','notes','branchId']
+  const allowedFields = ['firstName','lastName','email','phone','parentPhone','gender','photo','notes','branchId']
   for (const field of allowedFields) {
     if (body[field] !== undefined) updateData[field] = body[field] ?? null
   }

@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Bebas_Neue, DM_Sans, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { Providers } from '@/components/ui/Providers'
@@ -29,6 +29,12 @@ export const metadata: Metadata = {
     description: 'The complete platform for gym owners to manage members, classes, payments, and grow their business.',
     type: 'website',
   },
+}
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover', // handles safe areas on notched/punch-hole phones (iOS and Android alike)
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

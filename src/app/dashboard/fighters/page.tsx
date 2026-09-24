@@ -23,7 +23,7 @@ interface Enrollment {
   monthSummary?: MonthSummary
 }
 interface Member {
-  id: string; fighterId: string; firstName: string; lastName: string; email?: string; phone?: string; parentPhone?: string; photo?: string | null
+  id: string; fighterId: string; firstName: string; lastName: string; email?: string; phone?: string; parentPhone?: string; gender?: string | null; photo?: string | null
   birthYear?: number | null
   branchId?: string
   notes?: string
@@ -311,12 +311,12 @@ export default function FightersPage() {
   }
   const [whatsappTemplate, setWhatsappTemplate] = useState('')
   const [editingFighter, setEditingFighter] = useState(false)
-  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '', phone: '', parentPhone: '', photo: '', birthYear: '', branchId: '', notes: '' })
+  const [editForm, setEditForm] = useState({ firstName: '', lastName: '', email: '', phone: '', parentPhone: '', gender: '', photo: '', birthYear: '', branchId: '', notes: '' })
   const [savingEdit, setSavingEdit] = useState(false)
   const { data: session } = useSession()
 
   const [addForm, setAddForm] = useState({
-    firstName: '', lastName: '', email: '', phone: '', parentPhone: '', photo: '', birthYear: '',
+    firstName: '', lastName: '', email: '', phone: '', parentPhone: '', gender: '', photo: '', birthYear: '',
     classId: '', startDate: new Date().toISOString().split('T')[0], paymentMethod: '', proofPhoto: '',
     notes: '', branchId: '',
   })
@@ -363,7 +363,7 @@ export default function FightersPage() {
       const m = await res.json()
       setSelected(m)
       setEditingFighter(false)
-      setEditForm({ firstName: m.firstName || '', lastName: m.lastName || '', email: m.email || '', phone: m.phone || '', parentPhone: m.parentPhone || '', photo: m.photo || '', birthYear: m.birthYear ? String(m.birthYear) : '', branchId: m.branchId || '', notes: m.notes || '' })
+      setEditForm({ firstName: m.firstName || '', lastName: m.lastName || '', email: m.email || '', phone: m.phone || '', parentPhone: m.parentPhone || '', gender: m.gender || '', photo: m.photo || '', birthYear: m.birthYear ? String(m.birthYear) : '', branchId: m.branchId || '', notes: m.notes || '' })
     }
   }
   function refreshSelected() { if (selected) openMember(selected.id) }
@@ -399,7 +399,7 @@ export default function FightersPage() {
     if (res.ok) {
       toast.success('Fighter added!')
       setShowAdd(false)
-      setAddForm(f => ({ ...f, firstName: '', lastName: '', email: '', phone: '', parentPhone: '', photo: '', birthYear: '', paymentMethod: '', proofPhoto: '', notes: '', branchId: '' }))
+      setAddForm(f => ({ ...f, firstName: '', lastName: '', email: '', phone: '', parentPhone: '', gender: '', photo: '', birthYear: '', paymentMethod: '', proofPhoto: '', notes: '', branchId: '' }))
       setAddSessionCount(1); setAddDiscountType('NONE'); setAddDiscountValue(''); setAddOfferId('')
       loadList()
     } else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to add fighter') }
@@ -550,6 +550,13 @@ export default function FightersPage() {
                   <div><label className="label">Email (optional)</label><input type="email" value={addForm.email} onChange={e => setAddForm(f => ({ ...f, email: e.target.value }))} className="input" /></div>
                   <div><label className="label">Phone (for WhatsApp)</label><input value={addForm.phone} onChange={e => setAddForm(f => ({ ...f, phone: e.target.value }))} className="input" placeholder="+20 100 000 0000" /></div>
                   <div><label className="label">Parent Phone (optional)</label><input value={addForm.parentPhone} onChange={e => setAddForm(f => ({ ...f, parentPhone: e.target.value }))} className="input" placeholder="+20 100 000 0000" /></div>
+                  <div><label className="label">Gender</label>
+                    <select value={addForm.gender} onChange={e => setAddForm(f => ({ ...f, gender: e.target.value }))} className="input">
+                      <option value="">Not specified</option>
+                      <option value="MALE">Male</option>
+                      <option value="FEMALE">Female</option>
+                    </select>
+                  </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div><label className="label">Birth Year</label><input type="number" value={addForm.birthYear} onChange={e => setAddForm(f => ({ ...f, birthYear: e.target.value }))} className="input" placeholder="e.g. 1998" min={1930} max={new Date().getFullYear()} /></div>
@@ -659,6 +666,13 @@ export default function FightersPage() {
                         <div><label className="label text-xs">Email</label><input type="email" value={editForm.email} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} className="input py-2 text-base sm:text-sm" /></div>
                         <div><label className="label text-xs">Phone</label><input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} className="input py-2 text-base sm:text-sm" /></div>
                         <div><label className="label text-xs">Parent Phone</label><input value={editForm.parentPhone} onChange={e => setEditForm(f => ({ ...f, parentPhone: e.target.value }))} className="input py-2 text-base sm:text-sm" /></div>
+                        <div><label className="label text-xs">Gender</label>
+                          <select value={editForm.gender} onChange={e => setEditForm(f => ({ ...f, gender: e.target.value }))} className="input py-2 text-base sm:text-sm">
+                            <option value="">Not specified</option>
+                            <option value="MALE">Male</option>
+                            <option value="FEMALE">Female</option>
+                          </select>
+                        </div>
                       </div>
                       <div className="grid grid-cols-2 gap-2">
                         <div><label className="label text-xs">Birth Year</label><input type="number" value={editForm.birthYear} onChange={e => setEditForm(f => ({ ...f, birthYear: e.target.value }))} className="input py-2 text-base sm:text-sm" placeholder="e.g. 1995" /></div>
@@ -682,6 +696,7 @@ export default function FightersPage() {
                         ['Email', selected.email || '—'],
                         ['Phone', selected.phone || '—'],
                         ['Parent Phone', selected.parentPhone || '—'],
+                        ['Gender', selected.gender === 'MALE' ? 'Male' : selected.gender === 'FEMALE' ? 'Female' : '—'],
                         ['Birth Year', selected.birthYear || '—'],
                         ['Branch', branches.find(b => b.id === selected.branchId)?.name || 'Unassigned'],
                         ['Notes', selected.notes || '—'],

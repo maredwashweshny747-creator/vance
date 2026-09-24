@@ -7,7 +7,7 @@ import { cn, getInitials, formatCurrency } from '@/lib/utils'
 import toast from 'react-hot-toast'
 
 interface GymSettings { name: string; address: string; phone: string; email: string; currency: string; timezone: string; whatsappMessageTemplate: string }
-interface TeamAccount { id: string; name: string; email: string; role: string; phone?: string | null; canDelete?: boolean; createdAt: string; coach?: { phone?: string | null; sessionRate: number; privateSessionRate?: number; specialties?: string } | null }
+interface TeamAccount { id: string; name: string; email: string; role: string; phone?: string | null; gender?: string | null; canDelete?: boolean; createdAt: string; coach?: { phone?: string | null; gender?: string | null; sessionRate: number; privateSessionRate?: number; specialties?: string } | null }
 
 export default function SettingsPage() {
   const { data: session } = useSession()
@@ -20,9 +20,9 @@ export default function SettingsPage() {
   const [saving, setSaving] = useState(false)
   const [showAddTeam, setShowAddTeam] = useState(false)
   const [showPw, setShowPw] = useState(false)
-  const [teamForm, setTeamForm] = useState({ name:'', email:'', phone:'', password:'', role:'RECEPTIONIST', sessionRate:20, privateSessionRate:30, specialties:'', canDelete:true })
+  const [teamForm, setTeamForm] = useState({ name:'', email:'', phone:'', gender:'', password:'', role:'RECEPTIONIST', sessionRate:20, privateSessionRate:30, specialties:'', canDelete:true })
   const [editTeamMember, setEditTeamMember] = useState<TeamAccount | null>(null)
-  const [editForm, setEditForm] = useState({ name:'', phone:'', sessionRate:0, privateSessionRate:0, specialties:'', canDelete:true })
+  const [editForm, setEditForm] = useState({ name:'', phone:'', gender:'', sessionRate:0, privateSessionRate:0, specialties:'', canDelete:true })
   const [savingEdit, setSavingEdit] = useState(false)
 
   useEffect(() => {
@@ -50,13 +50,13 @@ export default function SettingsPage() {
       toast.success(`${teamForm.role === 'COACH' ? 'Coach' : 'Receptionist'} account created for ${teamForm.name}`)
       setTeam(prev => [data, ...prev])
       setShowAddTeam(false)
-      setTeamForm({ name:'', email:'', phone:'', password:'', role:'RECEPTIONIST', sessionRate:20, privateSessionRate:30, specialties:'', canDelete:true })
+      setTeamForm({ name:'', email:'', phone:'', gender:'', password:'', role:'RECEPTIONIST', sessionRate:20, privateSessionRate:30, specialties:'', canDelete:true })
     } else toast.error(data.error || 'Failed')
   }
 
   function openEditTeamMember(t: TeamAccount) {
     setEditTeamMember(t)
-    setEditForm({ name: t.name, phone: t.coach?.phone || t.phone || '', sessionRate: t.coach?.sessionRate || 0, privateSessionRate: t.coach?.privateSessionRate || 0, specialties: t.coach?.specialties || '', canDelete: t.canDelete ?? true })
+    setEditForm({ name: t.name, phone: t.coach?.phone || t.phone || '', gender: t.coach?.gender || t.gender || '', sessionRate: t.coach?.sessionRate || 0, privateSessionRate: t.coach?.privateSessionRate || 0, specialties: t.coach?.specialties || '', canDelete: t.canDelete ?? true })
   }
 
   async function saveTeamMemberEdit() {
@@ -66,7 +66,7 @@ export default function SettingsPage() {
     setSavingEdit(false)
     if (res.ok) {
       toast.success('Updated')
-      setTeam(prev => prev.map(t => t.id === editTeamMember.id ? { ...t, name: editForm.name, phone: editForm.phone, canDelete: editForm.canDelete, coach: t.coach ? { ...t.coach, phone: editForm.phone, sessionRate: editForm.sessionRate, privateSessionRate: editForm.privateSessionRate, specialties: editForm.specialties } : t.coach } : t))
+      setTeam(prev => prev.map(t => t.id === editTeamMember.id ? { ...t, name: editForm.name, phone: editForm.phone, gender: editForm.gender, canDelete: editForm.canDelete, coach: t.coach ? { ...t.coach, phone: editForm.phone, gender: editForm.gender, sessionRate: editForm.sessionRate, privateSessionRate: editForm.privateSessionRate, specialties: editForm.specialties } : t.coach } : t))
       setEditTeamMember(null)
     } else { const d = await res.json().catch(()=>({})); toast.error(d.error || 'Failed to save') }
   }
@@ -247,6 +247,13 @@ export default function SettingsPage() {
                 <div><label className="label">Full Name</label><input value={teamForm.name} onChange={e=>setTeamForm(f=>({...f,name:e.target.value}))} required className="input" placeholder="Dana Reyes"/></div>
                 <div><label className="label">Email</label><input type="email" value={teamForm.email} onChange={e=>setTeamForm(f=>({...f,email:e.target.value}))} required className="input" placeholder="dana@yourclub.com"/></div>
                 <div><label className="label">Phone (optional)</label><input value={teamForm.phone} onChange={e=>setTeamForm(f=>({...f,phone:e.target.value}))} className="input" placeholder="01012345678"/></div>
+                <div><label className="label">Gender</label>
+                  <select value={teamForm.gender} onChange={e=>setTeamForm(f=>({...f,gender:e.target.value}))} className="input">
+                    <option value="">Not specified</option>
+                    <option value="MALE">Male</option>
+                    <option value="FEMALE">Female</option>
+                  </select>
+                </div>
                 {teamForm.role === 'COACH' && (
                   <>
                     <div className="grid grid-cols-2 gap-3">
@@ -295,6 +302,13 @@ export default function SettingsPage() {
               </div>
               <div><label className="label">Full Name</label><input value={editForm.name} onChange={e => setEditForm(f => ({ ...f, name: e.target.value }))} className="input" /></div>
               <div><label className="label">Phone</label><input value={editForm.phone} onChange={e => setEditForm(f => ({ ...f, phone: e.target.value }))} className="input" placeholder="01012345678" /></div>
+              <div><label className="label">Gender</label>
+                <select value={editForm.gender} onChange={e => setEditForm(f => ({ ...f, gender: e.target.value }))} className="input">
+                  <option value="">Not specified</option>
+                  <option value="MALE">Male</option>
+                  <option value="FEMALE">Female</option>
+                </select>
+              </div>
               {editTeamMember.role === 'COACH' && (
                 <>
                   <div className="grid grid-cols-2 gap-3">

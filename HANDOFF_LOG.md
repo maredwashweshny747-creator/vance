@@ -34,7 +34,88 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
-## 2026-09-20 (2) — Claude (chat) — Real responsiveness pass: fixed iOS input auto-zoom app-wide, restructured the Remaining Sessions row layout
+## 2026-09-21 — Claude (chat) — Gender field, universal (not just iOS) responsive fix, overlapping-class payroll dedup, the real Fighters-tab speed fix
+
+**1. Gender (Male/Female)** added to fighters, coaches, and receptionists:
+`Member.gender`, `User.gender` (receptionists), `Coach.gender` (coaches
+use their own field, same pattern as `phone`). Wired into: fighter
+create/edit forms + the details view, and the staff create/edit forms +
+account list in Settings. **Migration required** (3 new nullable
+columns).
+
+**2. Responsiveness — clarified it's not iOS-specific:** none of the
+responsive work from the last few sessions used any iOS-only technique —
+the grid breakpoints, table scroll wrappers, and the 16px input fix are
+all plain CSS/HTML that Chrome, Samsung Internet, and MIUI's browser
+(all Chromium-based, which covers a Xiaomi Redmi Note and the vast
+majority of Android phones) interpret identically to Safari. The
+`sm:`/`md:`/`lg:` breakpoints are pure viewport-*width* media queries —
+a Redmi Note 14's ~393-412px CSS width crosses the same breakpoints as
+an iPhone in that size range, not a different set. What I did find and
+fix: the app had **no explicit `viewport` meta configuration** — it was
+relying entirely on Next.js's implicit default. Added one explicitly in
+`layout.tsx` (`width=device-width, initial-scale=1, viewport-fit=cover`)
+so correct mobile scaling doesn't depend on an implicit framework
+default, and `viewport-fit=cover` handles safe-area insets on notched/
+punch-hole phones on both Android and iOS.
+
+**3. Overlapping-time classes no longer double-count in payroll**: if a
+coach has two classes scheduled at the exact same start time on the same
+day (your example: two "Kickboxing Kids" listings both running
+Sat/Mon/Wed and Sat/Mon, both 8-10) and both get marked ATTENDED for the
+same date, `countSessions()` now credits that as **one** session, not
+two — deduped by `(date, class.startTimeOfDay)` per coach, since a coach
+can't physically teach two classes at once regardless of how many
+separate class records represent that slot.
+
+**4. The actual remaining Fighters-tab bottleneck, found and fixed:** the
+list endpoint was fetching **every fighter matching the search across the
+entire gym** on every single load — not just the current page — even
+when no status filter was applied (the default "All" view, which is how
+the tab is opened the vast majority of the time). Added a fast path: when
+no status filter is active, pagination now happens for real at the
+database level (`skip`/`take`), fetching and computing status for only
+the current page's ~25 fighters instead of the whole roster. The
+slower fetch-everything-then-filter path (needed because status is
+computed live, not a stored column) is now only used when a specific
+status filter is actually applied.
+
+**Why:** requested gender field for all three account types; you
+correctly pushed back that "responsive" isn't an iOS-only concern, and
+that clarification led to finding one real gap (the implicit viewport)
+worth fixing explicitly even though the rest of the work was already
+cross-platform; the overlapping-class payroll scenario is a legitimate
+double-counting bug when a gym lists the same time slot under two class
+names; and the Fighters tab — "the most used tab" — had one concrete,
+large remaining inefficiency that a targeted fix should meaningfully
+improve for any gym with more than a couple dozen fighters, which the
+prior session's fixes (batching the per-fighter detail view) hadn't
+touched.
+
+**Watch out for:**
+- The overlap-dedup keys on exact matching `startTimeOfDay` strings, not
+  true interval-overlap math (e.g. an 8:00-10:00 class and an 8:30-9:30
+  class wouldn't be deduped even though they overlap). This matches your
+  example exactly (identical times) but won't catch a partial-overlap
+  case with different start times — flagging in case that scenario also
+  needs handling.
+- The Fighters-tab fast path and the status-filter slow path are now two
+  genuinely different code paths returning the same response shape —
+  worth keeping that in mind if the list endpoint needs another change in
+  the future; a fix applied to one needs to be checked against the other.
+
+**Verified with:** `tsc --noEmit` in the working directory AND an
+isolated re-extraction with `node_modules` symlinked in — identical
+result both places (same single pre-existing unrelated `TS2322`, zero
+new errors), plus a brace-balance check on every heavily-edited file. No
+DB/browser/physical-device access in this sandbox — the Android
+responsive claims are based on documented Chromium/WebKit rendering
+behavior for standard CSS media queries (verifiable, well-established
+web platform behavior), not a screenshot from an actual Redmi Note. The
+payroll dedup and Fighters-tab fast path are verified by query-logic
+reasoning, not a live run against real data.
+
+---
 
 **1. Remaining Sessions modal row layout** (the specific item you named):
 each session row used to put the date, status badge, and up to 3 action
