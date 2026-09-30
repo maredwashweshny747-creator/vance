@@ -484,9 +484,13 @@ export default function FightersPage() {
         </select>
       </div>
 
-      {/* Table */}
+      {/* Roster — a table on desktop, a tappable card list on tablet/mobile. A 6-column
+          table squeezed into a narrow viewport forces horizontal scrolling to read a
+          single row, which doesn't work well as a touch interaction; below the `lg`
+          breakpoint every fighter is its own full-width card instead, so nothing needs
+          to scroll sideways just to see status or class chips. */}
       <div className="bg-dark-800 border border-dark-600 rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="hidden lg:block overflow-x-auto">
           <table className="w-full">
             <thead className="border-b border-dark-700">
               <tr>
@@ -526,6 +530,35 @@ export default function FightersPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Card list — tablet + mobile */}
+        <div className="lg:hidden divide-y divide-dark-700">
+          {loading ? [...Array(6)].map((_, i) => <div key={i} className="h-20 skeleton m-3 rounded-lg" />)
+          : members.length === 0 ? <div className="px-5 py-16 text-center text-dark-400">No fighters found</div>
+          : members.map(m => (
+            <div key={m.id} onClick={() => openMember(m.id)}
+              className="flex items-center gap-3 px-4 py-3.5 active:bg-dark-750 hover:bg-dark-750 cursor-pointer transition-colors">
+              <Avatar photo={m.photo} name={`${m.firstName} ${m.lastName}`} size={44}
+                onClick={m.photo ? (() => setPhotoZoom({ photo: m.photo!, name: `${m.firstName} ${m.lastName}` })) : undefined} />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="text-white text-sm font-medium truncate">{m.firstName} {m.lastName}</div>
+                  <span className={cn('badge text-[10px] flex-shrink-0', membershipColors[m.overallStatus || 'NO_PLAN'])}>{m.overallStatus === 'NO_PLAN' ? 'No Class' : m.overallStatus}</span>
+                </div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="text-dark-500 text-xs font-mono flex-shrink-0">{m.fighterId}</span>
+                  <span className="text-dark-600 text-xs flex-shrink-0">·</span>
+                  <span className="text-dark-400 text-xs truncate">
+                    {m.enrollments?.length ? m.enrollments.map(e => e.class?.name).join(', ') : 'No class'}
+                  </span>
+                </div>
+                <div className="text-dark-500 text-xs mt-1">{combinedSessionsPerWeek(m)} sessions/wk</div>
+              </div>
+              <ChevronRight size={18} className="text-dark-600 flex-shrink-0" />
+            </div>
+          ))}
+        </div>
+
         <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize}
           onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1) }} />
       </div>
@@ -801,9 +834,9 @@ export default function FightersPage() {
                           <span className="text-dark-300 flex-1 truncate">{p.type}{p.method ? ` · ${p.method.replace('_',' ')}` : ''}</span>
                           <span className="text-white flex-shrink-0">{formatCurrency(p.amount)}</span>
                           {p.proofPhoto && (
-                            <a href={p.proofPhoto} target="_blank" rel="noreferrer" className="flex-shrink-0">
-                              <img src={p.proofPhoto} alt="proof" className="w-6 h-6 rounded object-cover border border-dark-600 hover:border-primary-400/50" />
-                            </a>
+                            <button type="button" onClick={() => setPhotoZoom({ photo: p.proofPhoto!, name: `${selected.firstName} ${selected.lastName} — payment proof` })} className="flex-shrink-0">
+                              <img src={p.proofPhoto} alt="proof" className="w-6 h-6 rounded object-cover border border-dark-600 hover:border-primary-400/50 cursor-zoom-in" />
+                            </button>
                           )}
                           <span className="text-dark-500 flex-shrink-0">{formatDate(p.createdAt)}</span>
                         </div>

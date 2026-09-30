@@ -1,56 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionAndGym, canDelete } from '@/lib/getGym'
-import { checkAndExpireEnrollmentsBatch, sessionsAllowedForEnrollment } from '@/lib/enrollment'
+import { checkAndExpireEnrollmentsBatch, sessionsAllowedForEnrollment, backfillElapsedAttendance } from '@/lib/enrollment'
 import { phoneValidationError, sessionsAllowedForCycle } from '@/lib/utils'
 import { baseAmountForClass, applyDiscount } from '@/lib/payment'
 import { nthOccurrenceDate } from '@/lib/sessions'
-
-// Attaches {xName} to rows by resolving the plain-string user id fields.
-async function withUserNames<T extends Record<string, any>>(rows: T[], idFields: string[]) {
-  const ids = new Set<string>()
-  for (const row of rows) for (const f of idFields) if (row[f]) ids.add(row[f])
-  if (ids.size === 0) return rows
-  const users = await prisma.user.findMany({ where: { id: { in: Array.from(ids) } }, select: { id: true, name: true } })
-  const map = new Map(users.map(u => [u.id, u.name]))
-  return rows.map(row => {
-    const extra: Record<string, string | null> = {}
-    for (const f of idFields) extra[`${f}Name`] = row[f] ? (map.get(row[f]) || null) : null
-    return { ...row, ...extra }
-  })
-}
-
-async function attachMonthSummaries(enrollments: any[]) {
-  const withNames = await withUserNames(enrollments, ['addedById', 'lastActionById'])
-  if (withNames.length === 0) return withNames
-
-  // One query for every enrollment's marks instead of 3 count() calls PER enrollment —
-  // opening a fighter with 2-3 classes was doing 6-9 sequential round-trips here alone.
-  const allMarks = await prisma.classAttendance.findMany({
-    where: { enrollmentId: { in: withNames.map((e: any) => e.id) }, status: { in: ['ATTENDED', 'EXCUSED', 'ABSENT'] } },
-    select: { enrollmentId: true, status: true, date: true },
-  })
-  const marksByEnrollment = new Map<string, typeof allMarks>()
-  for (const m of allMarks) {
-    const list = marksByEnrollment.get(m.enrollmentId) || []
-    list.push(m)
-    marksByEnrollment.set(m.enrollmentId, list)
-  }
-
-  return withNames.map((e: any) => {
-    // Scoped to THIS enrollment's own current cycle (its startDate), not the calendar
-    // month — a multi-month offer's "remaining" must reflect the whole cycle's usage,
-    // not just whatever's happened since the 1st of this month.
-    const cycleStart = new Date(e.startDate)
-    const marks = (marksByEnrollment.get(e.id) || []).filter(m => new Date(m.date) >= cycleStart)
-    const attended = marks.filter(m => m.status === 'ATTENDED').length
-    const excused = marks.filter(m => m.status === 'EXCUSED').length
-    const absent = marks.filter(m => m.status === 'ABSENT').length
-    const sessionsAllowed = sessionsAllowedForEnrollment(e, e.class || {})
-    const remaining = Math.max(0, sessionsAllowed - attended - absent)
-    return { ...e, monthSummary: { attended, excused, absent, remaining, sessionsAllowed } }
-  })
-}
 
 export async function GET(req: NextRequest) {
   const result = await getSessionAndGym()
@@ -66,20 +20,70 @@ export async function GET(req: NextRequest) {
       where: { id, gymId: gym.id },
       include: {
         enrollments: { include: { class: { include: { offers: { where: { isActive: true }, orderBy: { createdAt: 'asc' } } } } }, orderBy: { createdAt: 'asc' } },
-        payments: { orderBy: { createdAt: 'desc' }, take: 10 },
+        payments: {
+          orderBy: { createdAt: 'desc' }, take: 10,
+          select: { id: true, amount: true, type: true, status: true, method: true, proofPhoto: true, createdAt: true },
+        },
       },
     })
     if (!member) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    const statusMap = await checkAndExpireEnrollmentsBatch(member.enrollments)
-    for (const e of member.enrollments) e.status = (statusMap.get(e.id) || e.status) as any
+    const enrollmentIds = member.enrollments.map(e => e.id)
+    const nameIds = new Set<string>()
+    if (member.createdById) nameIds.add(member.createdById)
+    for (const e of member.enrollments) { if (e.addedById) nameIds.add(e.addedById); if (e.lastActionById) nameIds.add(e.lastActionById) }
 
-    const enrollmentsWithSummary = await attachMonthSummaries(member.enrollments)
-    const [memberWithName] = await withUserNames([member], ['createdById'])
-    const recentAttendance = await prisma.classAttendance.findMany({
-      where: { memberId: id }, include: { class: true }, orderBy: { date: 'desc' }, take: 15,
+    // Opening a single fighter used to be ~6 sequential round-trips (expire-check, then
+    // month-summary attendance counts, then two SEPARATE user-name lookups, then recent
+    // attendance) — none of these four actually depend on each other's results, only on
+    // the member row already in hand, so run them together instead of one at a time.
+    const [statusMap, allMarks, users, recentAttendance] = await Promise.all([
+      checkAndExpireEnrollmentsBatch(member.enrollments),
+      enrollmentIds.length ? prisma.classAttendance.findMany({
+        where: { enrollmentId: { in: enrollmentIds }, status: { in: ['ATTENDED', 'EXCUSED', 'ABSENT'] } },
+        select: { enrollmentId: true, status: true, date: true },
+      }) : Promise.resolve([] as { enrollmentId: string; status: string; date: Date }[]),
+      nameIds.size ? prisma.user.findMany({ where: { id: { in: Array.from(nameIds) } }, select: { id: true, name: true } }) : Promise.resolve([] as { id: string; name: string | null }[]),
+      prisma.classAttendance.findMany({
+        where: { memberId: id }, orderBy: { date: 'desc' }, take: 15,
+        select: { id: true, date: true, status: true, class: { select: { name: true } } },
+      }),
+    ])
+
+    const nameMap = new Map(users.map(u => [u.id, u.name]))
+    const marksByEnrollment = new Map<string, typeof allMarks>()
+    for (const m of allMarks) {
+      const list = marksByEnrollment.get(m.enrollmentId) || []
+      list.push(m)
+      marksByEnrollment.set(m.enrollmentId, list)
+    }
+
+    const enrollmentsWithSummary = member.enrollments.map((e: any) => {
+      e.status = statusMap.get(e.id) || e.status
+      // Scoped to THIS enrollment's own current cycle (its startDate), not the calendar
+      // month — a multi-month offer's "remaining" must reflect the whole cycle's usage,
+      // not just whatever's happened since the 1st of this month.
+      const cycleStart = new Date(e.startDate)
+      const marks = (marksByEnrollment.get(e.id) || []).filter(m => new Date(m.date) >= cycleStart)
+      const attended = marks.filter(m => m.status === 'ATTENDED').length
+      const excused = marks.filter(m => m.status === 'EXCUSED').length
+      const absent = marks.filter(m => m.status === 'ABSENT').length
+      const sessionsAllowed = sessionsAllowedForEnrollment(e, e.class || {})
+      const remaining = Math.max(0, sessionsAllowed - attended - absent)
+      return {
+        ...e,
+        addedByIdName: e.addedById ? nameMap.get(e.addedById) || null : null,
+        lastActionByIdName: e.lastActionById ? nameMap.get(e.lastActionById) || null : null,
+        monthSummary: { attended, excused, absent, remaining, sessionsAllowed },
+      }
     })
-    return NextResponse.json({ ...memberWithName, enrollments: enrollmentsWithSummary, recentAttendance })
+
+    return NextResponse.json({
+      ...member,
+      createdByIdName: member.createdById ? nameMap.get(member.createdById) || null : null,
+      enrollments: enrollmentsWithSummary,
+      recentAttendance,
+    })
   }
 
   const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
@@ -208,6 +212,10 @@ export async function POST(req: NextRequest) {
           addedById: user.id, lastAction: 'CREATED', lastActionById: user.id, lastActionAt: new Date(),
         },
       })
+
+      // Backdated starting class (startDate before today) auto-attends every session the
+      // class's schedule says has already happened since then — see backfillElapsedAttendance.
+      await backfillElapsedAttendance(prisma, enrollment, cls, user.id)
 
       const base = baseAmountForClass(cls, sessionCount)
       const { type: discountType, value: discountValue, originalAmount, amount } = applyDiscount(base, body.discountType, body.discountValue)

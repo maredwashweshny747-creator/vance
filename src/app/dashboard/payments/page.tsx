@@ -1,11 +1,13 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { CreditCard, DollarSign, TrendingUp, AlertCircle, Search, X } from 'lucide-react'
 import { formatCurrency, formatDate, paymentColors, cn } from '@/lib/utils'
 import Pagination from '@/components/dashboard/Pagination'
 
 export default function PaymentsPage() {
   const [payments, setPayments] = useState<any[]>([])
+  const [photoZoom, setPhotoZoom] = useState<{ photo: string; label: string } | null>(null)
   const [loading, setLoading] = useState(true)
   const [totalCollected, setTotalCollected] = useState(0)
   const [pendingCount, setPendingCount] = useState(0)
@@ -105,9 +107,9 @@ export default function PaymentsPage() {
                     <div className="flex items-center gap-2">
                       <span className="whitespace-nowrap">{p.method ? p.method.replace('_',' ') : '—'}</span>
                       {p.proofPhoto && (
-                        <a href={p.proofPhoto} target="_blank" rel="noreferrer">
-                          <img src={p.proofPhoto} alt="proof" className="w-6 h-6 rounded object-cover border border-dark-600 hover:border-primary-400/50" />
-                        </a>
+                        <button type="button" onClick={() => setPhotoZoom({ photo: p.proofPhoto, label: p.member ? `${p.member.firstName} ${p.member.lastName}` : 'Payment proof' })}>
+                          <img src={p.proofPhoto} alt="proof" className="w-6 h-6 rounded object-cover border border-dark-600 hover:border-primary-400/50 cursor-zoom-in" />
+                        </button>
                       )}
                     </div>
                   </td>
@@ -122,6 +124,19 @@ export default function PaymentsPage() {
         <Pagination page={page} totalPages={totalPages} total={total} pageSize={pageSize}
           onPage={setPage} onPageSize={n => { setPageSize(n); setPage(1) }} />
       </div>
+
+      {/* Payment proof zoom */}
+      <AnimatePresence>
+        {photoZoom && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm" onClick={() => setPhotoZoom(null)}>
+            <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="relative max-w-lg w-full">
+              <button onClick={() => setPhotoZoom(null)} className="absolute -top-10 right-0 text-white/80 hover:text-white"><X size={24}/></button>
+              <img src={photoZoom.photo} alt={photoZoom.label} className="w-full h-auto rounded-2xl object-contain" onClick={e => e.stopPropagation()} />
+              <p className="text-center text-white/80 text-sm mt-3">{photoZoom.label} — payment proof</p>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

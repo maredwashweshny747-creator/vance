@@ -6,6 +6,7 @@ import { baseAmountForClass, applyDiscount } from '@/lib/payment'
 
 import { getEnrollmentSessions } from '@/lib/enrollmentSessions'
 import { nthOccurrenceDate } from '@/lib/sessions'
+import { backfillElapsedAttendance } from '@/lib/enrollment'
 
 function calcEndDate(start: Date, durationDays: number): Date {
   const d = new Date(start)
@@ -78,6 +79,10 @@ export async function POST(req: NextRequest) {
       },
       include: { class: true },
     })
+
+    // Backdated sign-ins (startDate before today) auto-attend every session the class's
+    // schedule says has already happened since then — see backfillElapsedAttendance.
+    await backfillElapsedAttendance(prisma, enrollment, cls, user.id)
 
     const { type: discountType, value: discountValue, originalAmount, amount } = applyDiscount(base, body.discountType, body.discountValue)
 

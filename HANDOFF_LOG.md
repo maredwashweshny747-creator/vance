@@ -34,6 +34,87 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
+## 2026-09-30 — Claude (chat) — Backdated auto-attendance, payment-proof zoom modal, Fighters tab mobile/tablet cards, single-fighter-open speed fix
+
+**1. Backdated class sign-ins now auto-attend elapsed sessions:** added
+`backfillElapsedAttendance()` in `src/lib/enrollment.ts`, called from both
+places a fresh `ClassEnrollment` gets created — `POST /api/members` (the
+optional starting class at fighter creation) and `POST
+/api/class-enrollments` (signing into an additional/first class). If the
+enrollment's `startDate` is today or earlier, every session the class's
+weekly schedule says has already happened between `startDate` and today is
+marked ATTENDED (`method: 'AUTO'`) right away — e.g. backdating a 2x/week
+class a week means the two sessions that week covered are immediately
+attended instead of reading as "missed" the moment someone opens the
+fighter's session breakdown.
+
+**2. Payment proof photos open in a zoom modal instead of a new browser
+tab:** Payments tab's proof-photo thumbnail, and the fighter detail panel's
+own Payment History thumbnail, now both open the same full-screen zoom
+pattern already used for fighter avatars (`photoZoom` state +
+AnimatePresence modal), instead of `<a target="_blank">` to the raw data
+URI.
+
+**3. Fighters tab has a real mobile/tablet layout now:** the 6-column
+table (`ID / Fighter / Classes / Status / Sessions-wk / chevron`) is now
+`hidden lg:block`; below `lg` there's a separate stacked card list (avatar,
+name + status badge on one line, fighter ID + class list on the next,
+sessions/week underneath) so nothing needs horizontal scrolling to read a
+single fighter on a phone or tablet. Both markups read off the same
+`members` state and both call the same `openMember(m.id)`.
+
+**4. Opening a single fighter is now ~2 round-trip "waves" instead of ~6
+sequential ones:** `GET /api/members?id=` used to await, one after another:
+the expiry check, the month-summary attendance-count query, TWO separate
+user-name lookups (one for the member's `createdById`, one for every
+enrollment's `addedById`/`lastActionById`), then recent attendance — none
+of which actually depend on each other's results, only on the member row
+already fetched. Merged the two name lookups into one batched query and
+run all four independent reads via `Promise.all`. Also switched
+`payments` and `recentAttendance` from full `include` to `select`ing only
+the fields the page actually reads. The old `withUserNames`/
+`attachMonthSummaries` helpers are gone — their logic is inlined at the one
+remaining call site so there's nothing dead left behind.
+
+**Why:** (1) and are as specified — a fighter backdated onto a
+recurring class should reflect the sessions that have already elapsed
+without a receptionist manually marking each one; (2) matches the existing
+avatar-zoom convention already in the codebase rather than inventing a new
+pattern; (3)/(4) were both named directly — "fighters tab UI on tablet/
+mobile isn't effective" and "fighter opening is slow, look for unneeded SQL
+requests."
+
+**Watch out for:**
+- The backfill is deliberately **not** wired into renew or switch — only
+  the two "fresh enrollment" creation paths. Renew's `startDate` is always
+  `new Date()` (today) anyway, so there'd be nothing to backfill there
+  beyond "is today itself a scheduled day," which felt out of scope for
+  what was asked. Flagging in case the intent was broader.
+- `backfillElapsedAttendance` takes a structural `{ classAttendance:
+  { createMany } }` type so it can be called with either `prisma` or a
+  `tx` — it's currently only ever called with plain `prisma` (both call
+  sites create the enrollment outside a transaction, matching the existing
+  pattern in those two routes), not inside a `$transaction`.
+- If another read gets added to the single-fighter `GET`, add it to the
+  existing `Promise.all` rather than awaiting it separately afterward, or
+  the sequential-round-trip problem just fixed comes back one query at a
+  time.
+- The Fighters-tab card list and table are two separate JSX blocks reading
+  the same data — a new column/field needs to be added to both or it'll
+  only show up on one breakpoint.
+
+**Verified with:** manual brace/paren/bracket-balance check on every edited
+file (this sandbox had no network access at all this session — not even
+the registry-limited access prior sessions had — so `npm install`/`prisma
+generate`/`tsc --noEmit` could not be run here; a global `typescript`
+install had no project type stubs to check against). **This zip has not
+been machine-verified with `tsc --noEmit` or an isolated re-extraction
+check** — please run those locally before trusting it the way prior zips
+were trusted, and treat this delivery as higher-risk than usual until that
+comes back clean.
+
+---
+
 ## 2026-09-21 — Claude (chat) — Gender field, universal (not just iOS) responsive fix, overlapping-class payroll dedup, the real Fighters-tab speed fix
 
 **1. Gender (Male/Female)** added to fighters, coaches, and receptionists:

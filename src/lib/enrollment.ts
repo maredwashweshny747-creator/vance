@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { sessionsAllowedForCycle } from '@/lib/utils'
+import { generateSessionDates } from '@/lib/sessions'
 
 /**
  * How many sessions this enrollment allows in total. Private/session-based classes
@@ -117,6 +118,40 @@ export async function checkAndExpireEnrollmentsBatch(
     await prisma.classEnrollment.updateMany({ where: { id: { in: toExpire } }, data: { status: 'EXPIRED' } })
   }
   return statusMap
+}
+
+/**
+ * When a fighter is signed into a class with a startDate that's today or earlier, every
+ * session the class's weekly schedule says should already have happened between
+ * startDate and today gets auto-marked ATTENDED — e.g. signing someone into a 2x/week
+ * class with a startDate a week ago immediately attends the two sessions that week
+ * would have covered, instead of leaving them to read as "missed" the moment the
+ * fighter's session list is opened. Skipped entirely for PRIVATE (session-based)
+ * classes, which have no calendar schedule to backfill against — those sessions get
+ * booked as they're attended, one at a time. A future-dated startDate backfills
+ * nothing (there's nothing elapsed yet). Takes `prisma` or an active `tx` so it can be
+ * called either standalone or inside a transaction. `createMany` + `skipDuplicates`
+ * makes this safe to call even if a date in the range somehow already has a mark.
+ */
+export async function backfillElapsedAttendance(
+  db: { classAttendance: { createMany: (args: any) => Promise<any> } },
+  enrollment: { id: string; memberId: string; startDate: Date | string },
+  cls: { id: string; daysOfWeek: string[]; isOneTime?: boolean; sessionDate?: Date | string | null; type?: string },
+  markedById: string
+) {
+  if (cls.type === 'PRIVATE') return
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const start = new Date(enrollment.startDate); start.setHours(0, 0, 0, 0)
+  if (start > today) return
+  const dates = generateSessionDates(cls, start, today)
+  if (dates.length === 0) return
+  await db.classAttendance.createMany({
+    data: dates.map(date => ({
+      classId: cls.id, enrollmentId: enrollment.id, memberId: enrollment.memberId,
+      date, status: 'ATTENDED', method: 'AUTO', markedById,
+    })),
+    skipDuplicates: true,
+  })
 }
 
 export async function checkAndExpireEnrollment(enrollment: { id: string; status: string; startDate: Date; endDate: Date | null; sessionCount?: number | null; totalSessions?: number | null }, cls: { daysOfWeek: string[]; durationDays: number; isOneTime?: boolean; type?: string }) {

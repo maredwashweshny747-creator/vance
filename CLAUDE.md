@@ -105,6 +105,21 @@ one-time-is-always-1 logic as `checkAndExpireEnrollment` — keep these two
 in sync if the exhaustion rule ever changes, they'll silently drift apart
 otherwise.
 
+**Auto-backfilled attendance on sign-in**: `backfillElapsedAttendance()` in
+`src/lib/enrollment.ts` runs whenever a `ClassEnrollment` is freshly created
+(the initial class at fighter creation in `POST /api/members`, and signing
+into an additional/first class in `POST /api/class-enrollments`). If the
+enrollment's `startDate` is today or earlier, it marks ATTENDED (`method:
+'AUTO'`) every session the class's weekly schedule says should already have
+happened between `startDate` and today — e.g. backdating a 2x/week class's
+`startDate` to a week ago immediately attends the two sessions that week
+covered, instead of them reading as "missed" the moment the fighter's
+session list is opened. Skipped for `PRIVATE` classes (no calendar schedule
+to backfill against — those are booked one session at a time). Deliberately
+**not** wired into renew/switch — those don't represent "adding a class"
+the way the request was framed, and renew's `startDate` is always today
+anyway (a future request to extend this could revisit that).
+
 **Coach attendance** (`CoachAttendance` model) is tied to a specific class
 and date — "did this coach show up to teach class X on date Y" — not a
 generic daily check-in (this was reworked from an earlier, simpler
@@ -122,6 +137,20 @@ attended/missed are then derived against that. Visible on: the coach's own
 dashboard (today's classes + check-in), the main Attendance page ("Coaches"
 panel, monthly attended/missed per coach), and each class's own roster page
 (that class's assigned coach + mark button for the selected date).
+
+**Fighters tab is table-on-desktop, cards-on-mobile/tablet**: the roster in
+`src/app/dashboard/fighters/page.tsx` renders two markups off the same
+`members` state — a `<table>` wrapped in `hidden lg:block`, and a stacked
+card list wrapped in `lg:hidden`, so nothing below the `lg` breakpoint ever
+needs horizontal scroll to read a row. If a column is added to one, mirror
+it in the other or it'll only show up on desktop (or only on mobile).
+
+**Payment proof photos open in an in-app zoom modal**, not a new browser
+tab — every `proofPhoto` thumbnail (Payments tab, and the fighter detail
+panel's own Payment History card) is a `<button>` that sets a `photoZoom`
+state, rendered with the same full-screen zoom pattern already used for
+fighter avatars. Keep new proof-photo thumbnails wired to that pattern
+rather than `<a target="_blank">`.
 
 ## Known traps for whoever edits this next
 
@@ -150,7 +179,14 @@ panel, monthly attended/missed per coach), and each class's own roster page
 4. When deleting/renaming a route or model, **grep the whole `src/` tree**
    for the old name (routes, Prisma model names, field names) — don't trust
    that a partial rewrite caught every consumer.
-5. Zip hygiene, if generating a downloadable archive: exclude
+5. `GET /api/members?id=` (opening a single fighter) fetches the member row
+   first, then runs every independent read (expiry check, month-summary
+   attendance counts, attribution name lookups, recent attendance) together
+   via `Promise.all` rather than one at a time — if you add another read
+   here, put it in that same `Promise.all` rather than awaiting it after,
+   or you'll reintroduce the sequential-round-trip slowness this was fixed
+   for.
+6. Zip hygiene, if generating a downloadable archive: exclude
    `node_modules/`, `.next/`, `.git/`, `*.tsbuildinfo`. After zipping,
    extract it to a **separate directory**, symlink `node_modules` in, and
    re-run `prisma generate` + `tsc --noEmit` there — don't just trust the
