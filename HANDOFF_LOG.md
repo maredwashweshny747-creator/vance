@@ -34,6 +34,123 @@ line-by-line; this log is for *context* a diff won't give you.
 
 ---
 
+## 2026-09-30 (3) — Claude (chat) — The actual root cause: UTC vs local timezone mismatch in ClassAttendance dates, plus two-tap confirm on all three buttons
+
+**The real bug, finally found:** the session I thought fixed excuse/un-excuse
+reversal (previous entry below) only fixed the extension math — it didn't
+catch the actual reason Excuse/Absent looked like they weren't doing
+anything. `src/lib/sessions.ts`'s `generateSessionDates()` (which produces
+every date the fighter's session list displays) truncated to midnight using
+the LOCAL timezone (`setHours(0,0,0,0)`), while `class-attendance/route.ts`'s
+`parseDateOnly()` (which parses the date string the frontend sends back when
+you click a button) truncates to UTC midnight. On any server not running in
+UTC, these two are different instants for the same calendar day — so
+clicking Excuse on a visible session would look up a `ClassAttendance` row
+that didn't match the one actually backing that session, upsert a *brand
+new* row instead of updating it, and run the excuse-extension logic against
+that stray row as if it were a fresh excuse (because its "previous status"
+lookup also missed). Net effect exactly as reported: the visible session's
+badge/count never changes, Attended/Absent counts never move, but a new
+session appears at the end of the cycle every time.
+
+**Fix:** switched every day-boundary truncation across the attendance
+domain to UTC — `src/lib/sessions.ts`, `src/lib/enrollmentSessions.ts`,
+`src/lib/enrollment.ts` (`backfillElapsedAttendance`), `src/app/api/
+class-attendance/route.ts` (including the month-overview's local
+`new Date(year, month-1, 1)` boundaries, now `Date.UTC(...)`), and
+`src/app/api/attendance/route.ts` (QR/manual check-in — writes to the same
+table, had to agree with the same convention). Also had to switch the
+day-of-week walk itself (`getDay()`/`setDate()` → `getUTCDay()`/
+`setUTCDate()`) in `nextScheduledDate`/`previousScheduledDate`/
+`nthOccurrenceDate`/`generateSessionDates` — truncating to UTC midnight but
+then still reading the weekday back in local time would have re-introduced
+the same class of bug for any server running west of UTC.
+
+**Also added:** the Excuse and Absent buttons in the fighter session modal
+now require the same two-tap "Tap again to confirm" pattern the Attend
+button already had — generalized `clickAttend`/`pendingAttendDate` into
+`clickMark`/`pendingAction` (keyed by `{date, status}` instead of just
+`date`) so all three buttons share one mechanism.
+
+**Also fixed in passing:** `CLAUDE.md`'s own description of the
+single-fighter session-math logic still referenced `attachMonthSummaries()`,
+which was removed two sessions ago when that logic got inlined into `GET
+/api/members?id=` — doc was out of sync with the code, updated.
+
+**Why this took two attempts:** the first pass (previous log entry) treated
+"un-excuse doesn't pull the extension back" as the whole bug, because that's
+literally what was described. It was a real gap and the fix for it is
+correct and still needed — but it wasn't reachable in practice because the
+upsert was silently missing the row it should have been updating, for a
+different, underlying reason. Worth remembering: "the UI doesn't seem to do
+anything" is as often a lookup/matching bug as a missing-logic bug.
+
+**Watch out for:**
+- If any new code reads or writes `ClassAttendance.date` (or compares it to
+  a boundary), it must truncate in UTC — `setUTCHours`, not `setHours`. Grep
+  for `setHours(0` before adding new attendance-date code; a hit outside
+  payments/analytics/inventory (which don't touch this table) is a red flag.
+- `CoachAttendance` (`src/app/api/coach-attendance/route.ts`) was **not**
+  touched — different model/table, not implicated in this bug, already has
+  its own `parseDateOnly` for incoming strings. It still truncates
+  `isScheduledToday`/month-range checks in local time, which is the same
+  latent category of bug if it's ever compared against something UTC-based,
+  but nothing reported it broken and it's internally self-consistent today.
+  Flagging in case it's worth a matching pass later.
+- `scheduledOccurrencesThisMonth()` in `src/lib/enrollment.ts` (coach
+  payroll "sessions assigned" count) is also local-time and was also left
+  alone — it's self-contained (never compared against stored
+  `ClassAttendance.date` values), just flagging that it exists so it isn't
+  mistaken for an oversight.
+
+**Verified with:** manual bracket-balance check across every edited file,
+plus a grep sweep (`setHours(0`) across the touched files confirming no
+local-midnight truncations remain in the attendance/enrollment/session
+code. Still no network access this session — `prisma generate`/`tsc
+--noEmit` have not been run. **Please run those two locally before trusting
+this zip** — a timezone bug like this is exactly the kind of thing that's
+easy to get subtly wrong and a real type-check would catch typos a manual
+review can miss.
+
+---
+
+## 2026-09-30 (2) — Claude (chat) — Excuse/un-excuse cycle-extension reversal fixed
+
+**What changed:** `POST /api/class-attendance` now looks up a session's
+*previous* mark before upserting the new one. Excusing a date still pushes
+`endDate` out by one scheduled occurrence (unchanged). New: correcting that
+same date back to Attended or Absent now pulls `endDate` back in by one
+occurrence via a new `previousScheduledDate()` in `src/lib/sessions.ts`
+(the mirror of the existing `nextScheduledDate()`), keyed off the
+old-status → new-status transition rather than the new status alone.
+
+**Why:** requested directly — remaining/attended/absent/excused counts and
+their buttons in the fighter's session breakdown were already wired up
+correctly (Attend decrements remaining the same way a QR check-in does,
+Excuse extends the cycle and bumps remaining by one, Absent decrements
+remaining) — the one real gap was the known asymmetry: excusing a session
+grants a bonus session at the end of the cycle, and un-excusing it back to
+Absent never took that bonus session back.
+
+**Watch out for:**
+- This is a single symmetric reversal (undo exactly one occurrence), not a
+  ledger of which excuse granted which extension. If a fighter has several
+  overlapping excused dates and they get corrected out of order, the
+  `endDate` math can drift — same category of simplification as the
+  existing payroll overlap-dedup caveat (exact-match, not full interval
+  reasoning). Flagging in case real usage surfaces that edge case.
+- The transition check only fires on an actual status change recorded via
+  this endpoint — a `classAttendance` row created any other way (import,
+  direct DB edit) with `EXCUSED` won't have gone through the extend step,
+  so correcting *that* row here would incorrectly pull `endDate` back for
+  an extension that was never actually granted.
+
+**Verified with:** manual bracket-balance check only — this sandbox still
+has no network access this session, so `prisma generate`/`tsc --noEmit`
+could not be run. Please verify locally before trusting this.
+
+---
+
 ## 2026-09-30 — Claude (chat) — Backdated auto-attendance, payment-proof zoom modal, Fighters tab mobile/tablet cards, single-fighter-open speed fix
 
 **1. Backdated class sign-ins now auto-attend elapsed sessions:** added

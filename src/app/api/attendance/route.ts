@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getSessionAndGym } from '@/lib/getGym'
 
-function startOfDay(d: Date) { const x = new Date(d); x.setHours(0,0,0,0); return x }
+// UTC, matching sessions.ts's startOfDay — this route writes to the same ClassAttendance
+// table the roster/session-modal code reads from, so "today" here must be the same
+// UTC-midnight instant those use, or a QR/manual check-in can silently create a second,
+// mismatched row for a date that's already marked (or vice versa).
+function startOfDay(d: Date) { const x = new Date(d); x.setUTCHours(0,0,0,0); return x }
 
 // GET: list today's check-ins + fighters (with active class enrollments) for manual check-in
 export async function GET(req: NextRequest) {
@@ -24,7 +28,7 @@ export async function GET(req: NextRequest) {
 
   // Today's check-ins
   const today = startOfDay(new Date())
-  const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1)
+  const tomorrow = new Date(today); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
   const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10) || 1)
   const pageSize = Math.min(100, Math.max(1, parseInt(searchParams.get('pageSize') || '25', 10) || 25))
 

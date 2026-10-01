@@ -98,12 +98,55 @@ URL, not an inline image). Built on top of `whatsappLink()` in
 `src/lib/utils.ts`, which takes an optional pre-filled message argument.
 
 **Session math on a fighter's enrollment card** (Attended / Exception /
-Absent / Remaining) all come from `attachMonthSummaries()` in
-`src/app/api/members/route.ts`. "Remaining" = `sessionsAllowed - attended`
-(floored at 0), using the same `sessionsAllowedForCycle()` /
-one-time-is-always-1 logic as `checkAndExpireEnrollment` — keep these two
-in sync if the exhaustion rule ever changes, they'll silently drift apart
-otherwise.
+Absent / Remaining) is computed inline in `GET /api/members?id=` (no longer
+a separate `attachMonthSummaries()` helper — that was inlined into the
+single-fighter branch during a performance pass, see HANDOFF_LOG). "Remaining"
+= `sessionsAllowed - attended - absent` (floored at 0), using the same
+`sessionsAllowedForEnrollment()` logic `checkAndExpireEnrollment` uses — keep
+these in sync if the exhaustion rule ever changes, they'll silently drift
+apart otherwise.
+
+**All ClassAttendance date handling MUST be UTC, never local time.** Every
+"day" truncation in `src/lib/sessions.ts`, `src/lib/enrollmentSessions.ts`,
+`src/lib/enrollment.ts` (`backfillElapsedAttendance`), `src/app/api/
+class-attendance/route.ts`, and `src/app/api/attendance/route.ts` uses
+`setUTCHours`/`getUTCDay`/`setUTCDate` — never the local `setHours`/`getDay`/
+`setDate`. These all read and write the same `ClassAttendance.date` column,
+matched via the `(enrollmentId, date)` unique constraint, so every writer and
+reader has to agree on exactly the same midnight convention. Mixing local and
+UTC truncation here was a real, shipped bug: a session generated as "Sept 30"
+for display could silently get looked up as "Sept 29" when marking it,
+missing the existing row entirely — upserting a *new* row instead of
+updating the one the UI was showing, with the new row driving the
+excuse-extension logic as if it were a fresh excuse. Symptom: clicking
+Excuse/Absent on an already-marked session looked like it did nothing (the
+visible mark never changed), while the enrollment's cycle silently grew a
+bonus session every time. If you add a new date-boundary anywhere attendance
+is read or written, it needs the UTC treatment too, including the
+day-of-week walk, not just the midnight truncation — `.getDay()`/`.setDate()`
+on a UTC-midnight `Date` still read it back in local time.
+
+**Excuse/un-excuse cycle extension is reversible**: excusing a session
+pushes the enrollment's `endDate` out by one scheduled occurrence
+(`nextScheduledDate()` in `src/lib/sessions.ts`) so the fighter keeps their
+full session count. Correcting that same date back to Attended or Absent
+pulls the `endDate` back in by one occurrence too (`previousScheduledDate()`,
+the mirror of `nextScheduledDate()`) — the `class-attendance` POST route
+detects this by comparing the mark's *previous* status to the new one, not
+just the new status alone. This only undoes a single extension
+symmetrically; it doesn't track which specific excuse granted which
+extension, so un-excusing out of order across several overlapping excused
+dates isn't guaranteed to unwind exactly — flagged as a known
+simplification, same spirit as the payroll overlap-dedup caveat above.
+
+**Every attendance-status button needs a tap-to-confirm.** Attend, Excuse,
+and Absent in the fighter session modal (`src/app/dashboard/fighters/
+page.tsx`) all go through `clickMark(dateKey, status)` / `pendingAction` —
+first tap arms a "Tap again to confirm" state scoped to that exact
+date+status pair, second tap actually calls `markStatus`. If a new
+attendance action is ever added to that modal, route it through `clickMark`
+too rather than calling `markStatus` directly, or it'll be a silent
+single-tap action while its siblings require two.
 
 **Auto-backfilled attendance on sign-in**: `backfillElapsedAttendance()` in
 `src/lib/enrollment.ts` runs whenever a `ClassEnrollment` is freshly created

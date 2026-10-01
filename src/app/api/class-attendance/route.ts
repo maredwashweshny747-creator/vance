@@ -3,9 +3,13 @@ import { prisma } from '@/lib/prisma'
 import { getSessionAndGym } from '@/lib/getGym'
 import { checkAndExpireEnrollment, checkAndExpireEnrollmentsBatch } from '@/lib/enrollment'
 
-import { generateSessionDates, nextScheduledDate } from '@/lib/sessions'
+import { generateSessionDates, nextScheduledDate, previousScheduledDate } from '@/lib/sessions'
 
-function startOfDay(d: Date) { const x = new Date(d); x.setHours(0,0,0,0); return x }
+// UTC, matching sessions.ts's startOfDay — every ClassAttendance.date in this file (and
+// everywhere else that reads/writes one) has to truncate the same way, or a mark for
+// "today" can land on a different row than the session the UI is actually showing,
+// depending on what timezone the server happens to run in.
+function startOfDay(d: Date) { const x = new Date(d); x.setUTCHours(0,0,0,0); return x }
 // Parses a plain "YYYY-MM-DD" date string as UTC midnight, immune to server timezone.
 function parseDateOnly(input: string): Date {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(input)
@@ -19,8 +23,11 @@ function parseDateOnly(input: string): Date {
 async function monthOverview(gym: { id: string }, classId: string, month: number, year: number) {
   const cls = await prisma.gymClass.findFirst({ where: { id: classId, gymId: gym.id } })
   if (!cls) return null
-  const monthStart = new Date(year, month - 1, 1)
-  const monthEnd = new Date(year, month, 0)
+  // Built directly in UTC (not `new Date(year, month-1, 1)`, which is local-timezone
+  // midnight) so these boundaries line up with the UTC-midnight dates generateSessionDates
+  // produces and the UTC-midnight values ClassAttendance.date is now stored as.
+  const monthStart = new Date(Date.UTC(year, month - 1, 1))
+  const monthEnd = new Date(Date.UTC(year, month, 0))
   const dates = generateSessionDates(cls, monthStart, monthEnd)
 
   const marks = await prisma.classAttendance.groupBy({
@@ -74,7 +81,7 @@ export async function GET(req: NextRequest) {
   if (!cls) return NextResponse.json({ error: 'Class not found' }, { status: 404 })
 
   const date = startOfDay(dateParam ? new Date(dateParam) : new Date())
-  const nextDay = new Date(date); nextDay.setDate(nextDay.getDate() + 1)
+  const nextDay = new Date(date); nextDay.setUTCDate(nextDay.getUTCDate() + 1)
 
   const enrollments = await prisma.classEnrollment.findMany({
     where: { classId, status: 'ACTIVE' },
@@ -119,6 +126,12 @@ export async function POST(req: NextRequest) {
 
   const day = parseDateOnly(date)
 
+  // Look up whatever this date was marked as before this call, if anything — the
+  // excuse-cycle-extension logic below needs to know the TRANSITION (old status -> new
+  // status), not just the new status, to know whether to extend or reverse.
+  const existingMark = await prisma.classAttendance.findUnique({ where: { enrollmentId_date: { enrollmentId, date: day } } })
+  const previousStatus = existingMark?.status || null
+
   const mark = await prisma.classAttendance.upsert({
     where: { enrollmentId_date: { enrollmentId, date: day } },
     update: { status, reason: reason || null, method: method || 'ROSTER', markedById: user.id, markedAt: new Date() },
@@ -129,9 +142,16 @@ export async function POST(req: NextRequest) {
   // one scheduled occurrence so they still get their full session count, just later.
   // (Re-excusing the same date twice is a no-op: nextScheduledDate always extends from
   // the *current* endDate, not from the excused date itself.)
-  if (status === 'EXCUSED') {
+  if (status === 'EXCUSED' && previousStatus !== 'EXCUSED') {
     const next = nextScheduledDate(enr.class, enr.endDate ? new Date(enr.endDate) : day)
     if (next) await prisma.classEnrollment.update({ where: { id: enr.id }, data: { endDate: next } })
+  } else if (previousStatus === 'EXCUSED' && status !== 'EXCUSED') {
+    // Correcting a previously-excused date back to Attended/Absent means that session no
+    // longer counts as excused — pull the cycle's endDate back in by exactly one occurrence
+    // to undo the extension it was granted. Mirrors the extend step above; doesn't attempt
+    // to account for multiple overlapping excuse extensions being un-done out of order.
+    const prev = previousScheduledDate(enr.class, enr.endDate ? new Date(enr.endDate) : day)
+    if (prev) await prisma.classEnrollment.update({ where: { id: enr.id }, data: { endDate: prev } })
   }
 
   // an ATTENDED/ABSENT mark can push the fighter over their session cap — check right away

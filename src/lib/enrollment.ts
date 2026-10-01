@@ -140,8 +140,10 @@ export async function backfillElapsedAttendance(
   markedById: string
 ) {
   if (cls.type === 'PRIVATE') return
-  const today = new Date(); today.setHours(0, 0, 0, 0)
-  const start = new Date(enrollment.startDate); start.setHours(0, 0, 0, 0)
+  // UTC, matching sessions.ts's startOfDay/generateSessionDates — see that file's comment
+  // for why this has to be UTC rather than local time.
+  const today = new Date(); today.setUTCHours(0, 0, 0, 0)
+  const start = new Date(enrollment.startDate); start.setUTCHours(0, 0, 0, 0)
   if (start > today) return
   const dates = generateSessionDates(cls, start, today)
   if (dates.length === 0) return

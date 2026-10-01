@@ -277,14 +277,18 @@ export default function FightersPage() {
     setSessionsModal({ loading: true })
     setSessionsModalEnrollmentId(enrollmentId)
     setSessionsLoading(true)
-    setPendingAttendDate(null)
+    setPendingAction(null)
     const res = await fetch(`/api/class-enrollments?id=${enrollmentId}`)
     setSessionsLoading(false)
     if (res.ok) setSessionsModal(await res.json())
     else { setSessionsModal(null); toast.error('Failed to load sessions') }
   }
 
-  const [pendingAttendDate, setPendingAttendDate] = useState<string | null>(null)
+  // Every attendance-status button (Attend/Excuse/Absent) is a two-tap action: the first
+  // tap on a given date+status just arms confirmation, the second tap (on that same
+  // date+status) actually records it — so a single accidental or quickly-double-processed
+  // tap can never silently change a fighter's remaining-sessions count.
+  const [pendingAction, setPendingAction] = useState<{ date: string; status: string } | null>(null)
   const [markingDate, setMarkingDate] = useState<{ date: string; status: string } | null>(null)
 
   async function markStatus(dateOnly: string, status: 'ATTENDED' | 'EXCUSED' | 'ABSENT') {
@@ -302,12 +306,12 @@ export default function FightersPage() {
     } else { const d = await res.json().catch(() => ({})); toast.error(d.error || 'Failed to update this session') }
   }
 
-  function clickAttend(dateKey: string) {
-    // Requires two clicks: the first just arms confirmation, the second (on the same
-    // date, within the window) actually records it — never a single accidental tap.
-    if (pendingAttendDate !== dateKey) { setPendingAttendDate(dateKey); return }
-    setPendingAttendDate(null)
-    markStatus(dateKey, 'ATTENDED')
+  function clickMark(dateKey: string, status: 'ATTENDED' | 'EXCUSED' | 'ABSENT') {
+    if (!pendingAction || pendingAction.date !== dateKey || pendingAction.status !== status) {
+      setPendingAction({ date: dateKey, status }); return
+    }
+    setPendingAction(null)
+    markStatus(dateKey, status)
   }
   const [whatsappTemplate, setWhatsappTemplate] = useState('')
   const [editingFighter, setEditingFighter] = useState(false)
@@ -994,6 +998,7 @@ export default function FightersPage() {
                     const isAbsent = s.status === 'ABSENT' || s.status === 'MISSED' || s.status === 'UPCOMING'
                     const dateKey = String(s.date).slice(0, 10)
                     const isMarking = (status: string) => markingDate?.date === dateKey && markingDate.status === status
+                    const isPending = (status: string) => pendingAction?.date === dateKey && pendingAction.status === status
                     return (
                       <div key={i} className="px-3 py-2.5 rounded-lg bg-dark-750 border border-dark-700 space-y-2">
                         <div className="flex items-center justify-between gap-2">
@@ -1002,22 +1007,24 @@ export default function FightersPage() {
                         </div>
                         <div className="flex items-center gap-3 flex-wrap">
                           {!isAttended && (
-                            <button onClick={() => clickAttend(dateKey)} disabled={!!markingDate}
-                              onBlur={() => { if (pendingAttendDate === dateKey) setPendingAttendDate(null) }}
-                              className={cn('text-xs font-medium disabled:opacity-50', pendingAttendDate === dateKey ? 'text-primary-300 font-bold' : 'text-primary-400 hover:text-primary-300')}>
-                              {isMarking('ATTENDED') ? 'Marking…' : pendingAttendDate === dateKey ? 'Tap again to confirm' : 'Attend'}
+                            <button onClick={() => clickMark(dateKey, 'ATTENDED')} disabled={!!markingDate}
+                              onBlur={() => { if (isPending('ATTENDED')) setPendingAction(null) }}
+                              className={cn('text-xs font-medium disabled:opacity-50', isPending('ATTENDED') ? 'text-primary-300 font-bold' : 'text-primary-400 hover:text-primary-300')}>
+                              {isMarking('ATTENDED') ? 'Marking…' : isPending('ATTENDED') ? 'Tap again to confirm' : 'Attend'}
                             </button>
                           )}
                           {!isExcused && (
-                            <button onClick={() => markStatus(dateKey, 'EXCUSED')} disabled={!!markingDate}
-                              className="text-blue-400 text-xs font-medium hover:text-blue-300 disabled:opacity-50">
-                              {isMarking('EXCUSED') ? 'Excusing…' : 'Excuse'}
+                            <button onClick={() => clickMark(dateKey, 'EXCUSED')} disabled={!!markingDate}
+                              onBlur={() => { if (isPending('EXCUSED')) setPendingAction(null) }}
+                              className={cn('text-xs font-medium disabled:opacity-50', isPending('EXCUSED') ? 'text-blue-300 font-bold' : 'text-blue-400 hover:text-blue-300')}>
+                              {isMarking('EXCUSED') ? 'Excusing…' : isPending('EXCUSED') ? 'Tap again to confirm' : 'Excuse'}
                             </button>
                           )}
                           {!isAbsent && (
-                            <button onClick={() => markStatus(dateKey, 'ABSENT')} disabled={!!markingDate}
-                              className="text-crimson-400 text-xs font-medium hover:text-crimson-300 disabled:opacity-50">
-                              {isMarking('ABSENT') ? 'Marking…' : 'Absent'}
+                            <button onClick={() => clickMark(dateKey, 'ABSENT')} disabled={!!markingDate}
+                              onBlur={() => { if (isPending('ABSENT')) setPendingAction(null) }}
+                              className={cn('text-xs font-medium disabled:opacity-50', isPending('ABSENT') ? 'text-crimson-300 font-bold' : 'text-crimson-400 hover:text-crimson-300')}>
+                              {isMarking('ABSENT') ? 'Marking…' : isPending('ABSENT') ? 'Tap again to confirm' : 'Absent'}
                             </button>
                           )}
                         </div>

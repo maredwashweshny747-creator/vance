@@ -2,7 +2,11 @@ import { prisma } from '@/lib/prisma'
 import { generateSessionDates } from '@/lib/sessions'
 import { sessionsAllowedForEnrollment } from '@/lib/enrollment'
 
-function startOfDay(d: Date) { const x = new Date(d); x.setHours(0, 0, 0, 0); return x }
+// UTC, matching sessions.ts's startOfDay — this is the key used to line up a stored
+// ClassAttendance row with the calendar dates generateSessionDates() produces, so it
+// must truncate the same way generateSessionDates does or marks silently fail to match
+// their session whenever the server's local timezone isn't UTC.
+function startOfDay(d: Date) { const x = new Date(d); x.setUTCHours(0, 0, 0, 0); return x }
 function startOfDayISO(d: Date | string) { return startOfDay(new Date(d)).toISOString() }
 
 export async function getEnrollmentSessions(enr: any) {
